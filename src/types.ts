@@ -79,6 +79,12 @@ export interface Message {
   part?: { k: number; n: number }
   /** حُوِّلت إلى ملخص أو بطاقات… محفوظة */
   savedAs?: string
+  /** صفحات قُرئت من صورها، وصفحات لم يطّلع عليها رفيق (بلا نص، أو سقطت منها معادلات ورسوم) */
+  pages?: { seen: PageRef[]; unread: PageRef[]; partial: PageRef[] }
+}
+export interface PageRef {
+  bookId: string
+  page: number
 }
 export type Task = 'answer' | 'explain' | 'teach' | 'summary' | 'points' | 'mistakes' | 'examples' | 'steps' | 'compare' | 'check' | 'grade' | 'terms' | 'search'
 export type Verdict = 'correct' | 'partial' | 'wrong' | 'skipped'

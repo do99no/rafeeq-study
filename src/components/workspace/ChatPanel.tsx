@@ -13,6 +13,7 @@ import { toast } from '../../store/toast'
 import type { Book, Focus, Level, Message, Notebook, StudyOutput, Task } from '../../types'
 import { RichText } from '../RichText'
 import { LessonPicker } from './LessonPicker'
+import { PagesNote } from './PagesNote'
 
 const NONE: Message[] = []
 const plain = (t: string) => t.replace(/\*\*|`|#+ |^> ?/gm, '').replace(/\s?\[\d+\]/g, '')
@@ -76,6 +77,7 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
   }, [messages, streaming])
 
   const titleOf = (id: string) => data.books.find((b) => b.id === id)?.title ?? ''
+  const subjectOf = (id: string) => data.books.find((b) => b.id === id)?.subject
 
   const ask = async (a: Ask, history: Message[]) => {
     const c = (ctrl.current = new AbortController())
@@ -86,7 +88,7 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
     setStreaming('')
     setStatus('')
     try {
-      for await (const ev of respond(a, history, { bookIds: activeIds, focus: f, docs, level: getState().data.settings.level, titleOf }, c.signal)) {
+      for await (const ev of respond(a, history, { bookIds: activeIds, focus: f, docs, level: getState().data.settings.level, titleOf, subjectOf }, c.signal)) {
         if (unmounted.current || getState().activeId !== profileId) return
         if (ev.type === 'text') setStreaming((text += ev.text))
         else if (ev.type === 'reset') setStreaming((text = ''))
@@ -351,6 +353,7 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
                     </button>
                   </div>
                 )}
+                {m.pages && <PagesNote pages={m.pages} />}
                 {m.mode === 'ai' && !m.citations?.length && m.task !== 'grade' && <p className="warn">لا يستند هذا الرد إلى استشهاد من كتبك، فتحقق منه قبل الاعتماد عليه.</p>}
                 <div className="msg-actions">
                   <button className="icon-btn" onClick={() => void copy(m)} aria-label="نسخ" title="نسخ">

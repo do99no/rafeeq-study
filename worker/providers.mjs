@@ -8,6 +8,8 @@ export const PROVIDERS = {
     name: 'Google Gemini', key: 'GEMINI_API_KEY',
     base: 'https://generativelanguage.googleapis.com/v1beta/openai',
     chat: 'gemini-3.8-flash', embed: 'gemini-embedding-001', dims: 768, embedBatch: 50,
+    // يقرأ صور صفحات الكتاب (المعادلات والرسوم التي يسقطها التعرف الضوئي)
+    vision: true,
     note: 'قد تُستخدم بيانات الخطة المجانية لتحسين خدمات Google.',
   },
   groq: {

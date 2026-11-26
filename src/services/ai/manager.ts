@@ -148,6 +148,11 @@ const usable = (task: Task) => providers().filter((p) => p.info.configured && p.
 const keyOf = (p: Provider, task: Task) => `${p.info.id}:${task}`
 
 export const hasTask = (task: Task) => usable(task).length > 0
+/** هل يوجد مزود متاح الآن يقرأ صور الصفحات؟ لا تُرسم الصور دونه */
+export async function visionReady() {
+  await ensure().catch(() => {})
+  return usable('chat').some((p) => p.info.models.vision && !coolingUntil(keyOf(p, 'chat')))
+}
 
 /** يفحص الوسيط فقط؛ لا يستهلك حصة أي مزود. */
 export async function refresh(manual = false) {
@@ -191,7 +196,12 @@ function unavailable(task: Task): Unavailable {
   return new Unavailable('all', soon.length ? Math.min(...soon) : undefined)
 }
 
-export type ChatEvent = { type: 'text'; text: string } | { type: 'reset' } | { type: 'provider'; name: string }
+export type ChatEvent = { type: 'text'; text: string } | { type: 'reset' } | { type: 'provider'; name: string; images: boolean }
+
+/** الصور لا تُرسل إلا لمزود يقرأها؛ وإلا تُحذف هي وتعليماتها ويبقى النص */
+const forProvider = (messages: ChatMsg[], vision: boolean): ChatMsg[] =>
+  messages.map(({ images, imagesNote, ...m }) => (vision && images?.length ? { ...m, content: imagesNote ? `${imagesNote}\n\n${m.content}` : m.content, images } : m))
+export const hasImages = (messages: ChatMsg[]) => messages.some((m) => m.images?.length)
 
 /** يجرّب المزودين بالترتيب مع إعادة إرسال السياق كاملاً، دون تدخل الطالب. */
 export async function* chat(messages: ChatMsg[], opts: { maxTokens?: number; signal: AbortSignal }): AsyncGenerator<ChatEvent> {
@@ -203,8 +213,9 @@ export async function* chat(messages: ChatMsg[], opts: { maxTokens?: number; sig
     if (coolingUntil(key) || (workerDead && !local)) continue
     let started = false
     try {
-      for await (const text of p.chat!(messages, opts)) {
-        if (!started) yield { type: 'provider', name: p.info.name }
+      const vision = !!p.info.models.vision
+      for await (const text of p.chat!(forProvider(messages, vision), opts)) {
+        if (!started) yield { type: 'provider', name: p.info.name, images: vision && hasImages(messages) }
         started = true
         yield { type: 'text', text }
       }

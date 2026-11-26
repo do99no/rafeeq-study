@@ -1,6 +1,10 @@
 export interface ChatMsg {
   role: 'system' | 'user' | 'assistant'
   content: string
+  /** صور صفحات الكتاب (data:image/jpeg) لمزود يقرأ الصور */
+  images?: string[]
+  /** تعليمات تُضاف إلى النص فقط إذا أُرسلت الصور فعلاً */
+  imagesNote?: string
 }
 
 /** المهام مفصولة: لا يُستخدم مزود إلا في مهمة يعلن دعمها */

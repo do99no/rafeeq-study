@@ -46,7 +46,8 @@ for (const f of allBooks().filter((x) => /\.pdf$/i.test(x))) {
   const text = JSON.parse(readFileSync(`${W}/${id}.json`, 'utf8')).pages
   const pages = text.map((p) => {
     const of = `${W}/ocr/${id}/${p.page}.json`
-    if (c.useText && st.textQuality(p.lines.map((l) => l.t).join('\n')) === 'ok') return { bookId: id, page: p.page, lines: p.lines, src: 'text', ok: true }
+    // trustText: صفحات فُحص نصها بالعين وتردّها قاعدة الجودة خطأً (جداول أفعال بلا كلمات وظيفية مثل the)
+    if (c.useText && (c.trustText?.includes(p.page) || st.textQuality(p.lines.map((l) => l.t).join('\n')) === 'ok')) return { bookId: id, page: p.page, lines: p.lines, src: 'text', ok: true }
     if (c.skip?.includes(p.page) || !existsSync(of)) return { bookId: id, page: p.page, lines: [], src: 'none', ok: false }
     const j = st.judgeOcr(JSON.parse(readFileSync(of, 'utf8')).lines)
     return { bookId: id, page: p.page, lines: j.lines, src: 'ocr', ok: j.ok, ...(j.weak ? { weak: j.weak } : {}) }

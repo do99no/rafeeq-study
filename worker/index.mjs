@@ -1,7 +1,10 @@
 /** وسيط صغير يحمي المفاتيح ويمرر الطلبات. لا يخزن أسئلة الطالب ولا يسجلها. */
 import { PROVIDERS, isConfigured, modelOf } from './providers.mjs'
 
-const MAX_BODY = 400_000
+// صور الصفحات تكبر الطلب: حتى 4 صور JPEG
+const MAX_BODY = 6_000_000
+const MAX_IMAGES = 4
+const IMAGE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/
 const FIRST_BYTE_MS = 40_000
 
 class HttpError extends Error {
@@ -87,15 +90,18 @@ function pick(id, task, env) {
 const isText = (s, max) => typeof s === 'string' && s.length > 0 && s.length <= max
 
 async function chat(b, env, signal) {
-  const { model, base, key } = pick(b.provider, 'chat', env)
-  const ok = Array.isArray(b.messages) && b.messages.length > 0 && b.messages.length <= 40 && b.messages.every((m) => ['system', 'user', 'assistant'].includes(m?.role) && isText(m.content, 120_000))
-  if (!ok) throw new HttpError(400, 'bad_request')
+  const { p, model, base, key } = pick(b.provider, 'chat', env)
+  const imgs = (m) => m.images ?? []
+  const ok = Array.isArray(b.messages) && b.messages.length > 0 && b.messages.length <= 40 && b.messages.every((m) => ['system', 'user', 'assistant'].includes(m?.role) && isText(m.content, 120_000) && Array.isArray(imgs(m)) && imgs(m).every((u) => typeof u === 'string' && u.length <= 1_500_000 && IMAGE.test(u)))
+  const total = ok ? b.messages.reduce((n, m) => n + imgs(m).length, 0) : 0
+  if (!ok || total > MAX_IMAGES || (total && !p.vision)) throw new HttpError(400, 'bad_request')
   const res = await upstream(`${base}/chat/completions`, key, {
     model,
     stream: true,
     temperature: 0.2,
     max_tokens: Math.min(Number(b.maxTokens) || 4000, 8000),
-    messages: b.messages.map(({ role, content }) => ({ role, content })),
+    // الصيغة المعيارية للصور في واجهات OpenAI المتوافقة
+    messages: b.messages.map((m) => ({ role: m.role, content: imgs(m).length ? [{ type: 'text', text: m.content }, ...imgs(m).map((url) => ({ type: 'image_url', image_url: { url } }))] : m.content })),
   }, signal)
   return new Response(res.body, { headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', 'x-rafeeq-model': encodeURIComponent(model) } })
 }
@@ -123,7 +129,7 @@ const status = (env) =>
   Response.json({
     providers: Object.entries(PROVIDERS).map(([id, p]) => ({
       id, name: p.name, note: p.note, configured: isConfigured(id, env), embedBatch: p.embedBatch,
-      models: Object.fromEntries(['chat', 'embed', 'rerank'].filter((t) => p[t]).map((t) => [t, modelOf(id, t, env)])),
+      models: { ...Object.fromEntries(['chat', 'embed', 'rerank'].filter((t) => p[t]).map((t) => [t, modelOf(id, t, env)])), ...(p.vision ? { vision: modelOf(id, 'chat', env) } : {}) },
     })),
   })
 

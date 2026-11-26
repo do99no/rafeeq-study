@@ -1,5 +1,5 @@
 import type { Focus, Level, Message, Task, Verdict } from '../../types'
-import { chat, Unavailable } from '../ai/manager'
+import { chat, Unavailable, visionReady } from '../ai/manager'
 import type { ChatMsg } from '../ai/types'
 import type { DocMeta } from '../books/types'
 import { chunksByRef, scopeChunks, search, textSearch } from '../rag/search'
@@ -7,7 +7,8 @@ import type { Hit, Scope } from '../rag/types'
 import { cleanCites, passagesText, toCitation } from './assistant'
 import { SUMMARY_STYLES, type SummaryStyle } from './generate'
 import { classify, LESSON_TASKS, norm, topicOf } from './intent'
-import { LEVELS, TASKS, TUTOR } from './prompts'
+import { pageImages, planPages, type PagePlan, type PageRef } from './pages'
+import { imagesNote, LEVELS, subjectGuide, SYMBOLIC, TASKS, TUTOR } from './prompts'
 
 export interface Ctx {
   /** المصادر المفعلة في الدفتر */
@@ -16,6 +17,8 @@ export interface Ctx {
   docs: Record<string, DocMeta>
   level: Level
   titleOf: (bookId: string) => string
+  /** مادة الكتاب، ليتكيف الشرح مع طبيعتها */
+  subjectOf?: (bookId: string) => string | undefined
 }
 export interface Ask {
   text: string
@@ -38,6 +41,8 @@ export type TutorEvent =
 /** حجم الجزء: الشرح الكامل يقرأ أجزاء كبيرة، والتعليم خطوة بخطوة فكرة صغيرة كل مرة */
 const PART: Partial<Record<Task, number>> = { explain: 22_000, teach: 3_200 }
 const BUDGET = 30_000
+/** عدد صور الصفحات المرفقة في كل مهمة */
+const IMAGES: Partial<Record<Task, number>> = { explain: 3, teach: 2, steps: 3, examples: 2, answer: 2, check: 2, grade: 1, compare: 2, summary: 2, points: 2, terms: 1, mistakes: 1 }
 const MAX_TOKENS: Partial<Record<Task, number>> = { explain: 7000, teach: 2500, check: 900, grade: 1500, summary: 6000, points: 5000 }
 
 const scopeOf = (f: Focus): Scope => ({ bookIds: [f.bookId], pages: { bookId: f.bookId, from: f.from, to: f.to } })
@@ -236,10 +241,29 @@ export async function* respond(ask: Ask, history: Message[], ctx: Ctx, signal: A
   }
 
   const where = focus ? `\nالطالب يدرس الآن: «${focus.title}» من كتاب «${ctx.titleOf(focus.bookId)}».` : ''
+  const guide = subjectGuide([focus?.bookId, ...hits.map((h) => h.bookId)].map((id) => (id ? ctx.subjectOf?.(id) : undefined)))
+
+  // صفحات سقطت منها معادلات أو رسوم، وصفحات من الدرس بلا نص: تُرفق صورها لمزود يقرأ الصور
+  const range = focus && (LESSON_TASKS.includes(task) || task === 'check') && !ask.basis ? { bookId: focus.bookId, from: focus.from, to: focus.to } : undefined
+  const plan = planPages(hits, ctx.docs, (await visionReady()) ? (IMAGES[task] ?? 2) : 0, range, (id) => SYMBOLIC.has(ctx.subjectOf?.(id) ?? ''))
+  const shots = plan.attach.length ? await pageImages(plan.attach) : []
+  // صفحة بلا نص تصبح مقطعاً يُستشهد به، ومحتواه في صورتها
+  for (const s of shots)
+    if (!hits.some((h) => h.bookId === s.ref.bookId && h.page === s.ref.page))
+      hits.push({ bookId: s.ref.bookId, i: -1, page: s.ref.page, text: 'صفحة بلا نص مقروء آلياً: محتواها في صورتها المرفقة.', bookTitle: ctx.titleOf(s.ref.bookId), score: 0, lesson: focus?.title, ocr: true })
+  const noteList = shots.map((s) => `ص ${s.ref.page} (المقطع [${hits.findIndex((h) => h.bookId === s.ref.bookId && h.page === s.ref.page) + 1}])`)
+  const left = plan.unread.filter((p) => !shots.some((s) => s.ref.page === p.page && s.ref.bookId === p.bookId))
+  const unreadNote = left.length ? `\nصفحات من الدرس بلا نص مقروء: ${left.map((p) => p.page).join('، ')}. لا تتحدث عن محتواها، ونبّه الطالب إلى فتحها في القارئ.` : ''
+  let sent = false
+
   const messages: ChatMsg[] = [
-    { role: 'system', content: `${TUTOR}\n${LEVELS[ctx.level].ask}${where}` },
+    { role: 'system', content: `${TUTOR}${guide ? `\n${guide}` : ''}\n${LEVELS[ctx.level].ask}${where}` },
     ...historyMsgs(history),
-    { role: 'user', content: `المقاطع:\n\n${passagesText(hits)}\n\n---\n${instruction}` },
+    {
+      role: 'user',
+      content: `المقاطع:\n\n${passagesText(hits)}\n\n---\n${instruction}${unreadNote}`,
+      ...(shots.length ? { images: shots.map((s) => s.url), imagesNote: imagesNote(noteList) } : {}),
+    },
   ]
 
   let text = ''
@@ -248,7 +272,10 @@ export async function* respond(ask: Ask, history: Message[], ctx: Ctx, signal: A
     const split = task === 'teach' || task === 'check' ? splitCheck(text) : { body: text.trim() }
     const c = cleanCites(split.body, hits.length)
     const basis = hits.map((h) => ({ bookId: h.bookId, i: h.i }))
-    const message: Omit<Message, 'id' | 'role' | 'createdAt'> = { task, mode: 'ai', provider, text: c.text, citations: c.used.map((n) => toCitation(hits[n - 1], n)), basis, ...(part ? { part } : {}) }
+    const message: Omit<Message, 'id' | 'role' | 'createdAt'> = {
+      task, mode: 'ai', provider, text: c.text, citations: c.used.map((n) => toCitation(hits[n - 1], n)), basis: basis.filter((b) => b.i >= 0), ...(part ? { part } : {}),
+      ...pagesOf(plan, sent ? shots.map((s) => s.ref) : []),
+    }
     if ('q' in split && split.q) {
       const h = split.n && hits[split.n - 1] ? hits[split.n - 1] : hits[0]
       message.check = { q: split.q, answer: split.answer!, cite: toCitation(h, 1) }
@@ -264,7 +291,10 @@ export async function* respond(ask: Ask, history: Message[], ctx: Ctx, signal: A
     let started = false
     try {
       for await (const ev of chat(messages, { signal, maxTokens: MAX_TOKENS[task] ?? 4000 })) {
-        if (ev.type === 'provider') provider = ev.name
+        if (ev.type === 'provider') {
+          provider = ev.name
+          sent = ev.images
+        }
         else if (ev.type === 'reset') {
           text = ''
           yield { type: 'reset' }
@@ -290,14 +320,21 @@ export async function* respond(ask: Ask, history: Message[], ctx: Ctx, signal: A
         if (signal.aborted) return
         continue
       }
-      yield fallback(task, hits, e, ask)
+      yield fallback(task, hits.filter((h) => h.i >= 0), e, ask, pagesOf(plan, []))
       return
     }
   }
 }
 
+/** ما قرأه رفيق من صور الصفحات فعلاً، وما بقي على الطالب أن يفتحه بنفسه */
+function pagesOf(plan: PagePlan, seen: PageRef[]): Pick<Message, 'pages'> {
+  const has = (p: PageRef) => seen.some((x) => x.bookId === p.bookId && x.page === p.page)
+  const pages = { seen, unread: plan.unread.filter((p) => !has(p)), partial: [...plan.partial, ...plan.attach.filter((p) => !has(p) && !plan.unread.some((u) => u.page === p.page && u.bookId === p.bookId))].filter((p) => !has(p)) }
+  return pages.seen.length || pages.unread.length || pages.partial.length ? { pages } : {}
+}
+
 /** دون ذكاء اصطناعي: نصوص الكتاب نفسها، مع توضيح ما تعذّر */
-function fallback(task: Task, hits: Hit[], e: Unavailable, ask: Ask): TutorEvent {
+function fallback(task: Task, hits: Hit[], e: Unavailable, ask: Ask, pages: Pick<Message, 'pages'>): TutorEvent {
   const why = unavailableText(e)
   if (task === 'grade' && ask.grade?.check)
     return { type: 'done', message: { task, mode: 'search', text: `${why}\n\n**الإجابة النموذجية:** ${ask.grade.check.answer}\n\nقارنها بإجابتك، ثم حدّد النتيجة بنفسك.`, citations: ask.grade.check.cite ? [{ ...ask.grade.check.cite, n: 1 }] : [] } }
@@ -306,6 +343,6 @@ function fallback(task: Task, hits: Hit[], e: Unavailable, ask: Ask): TutorEvent
   const lead = LESSON_TASKS.includes(task) ? `${why} هذه بداية الدرس من كتابك كما وردت:` : `${why} هذه أقرب الفقرات من كتبك كما وردت:`
   return {
     type: 'done',
-    message: { task: 'search', mode: 'search', text: `${lead}\n\n${top.map((h, i) => `${h.text.replace(/\n/g, ' ').slice(0, 600)} [${i + 1}]`).join('\n\n')}`, citations: top.map((h, i) => toCitation(h, i + 1)) },
+    message: { ...pages, task: 'search', mode: 'search', text: `${lead}\n\n${top.map((h, i) => `${h.text.replace(/\n/g, ' ').slice(0, 600)} [${i + 1}]`).join('\n\n')}`, citations: top.map((h, i) => toCitation(h, i + 1)) },
   }
 }
