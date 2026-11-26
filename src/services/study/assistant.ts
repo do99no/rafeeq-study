@@ -17,7 +17,7 @@ export const RULES = `أنت «رفيق»، مساعد دراسي لطالب ف�
 export const whereOf = (h: { chapter?: string; lesson?: string }) => h.lesson ?? h.chapter
 
 export const passagesText = (hits: Hit[], start = 1) =>
-  hits.map((h, i) => `[${start + i}] (الكتاب: ${h.bookTitle}${whereOf(h) ? `، ${whereOf(h)}` : ''}${h.ocr ? '، نص مصوَّر قد تخطئ رموزه' : ''}${h.weak ? '، سقطت منه معادلات أو رموز' : ''})\n${h.text}`).join('\n\n')
+  hits.map((h, i) => `[${start + i}] (الكتاب: ${h.bookTitle}${whereOf(h) ? `، ${whereOf(h)}` : ''}${h.ocr ? '، نص مصوَّر قد تخطئ رموزه' : ''}${h.weak ? '، سقطت منه رسوم أو معادلات أو رموز' : ''})\n${h.text}`).join('\n\n')
 
 export const toCitation = (h: Hit, n: number): Citation => ({
   n, bookId: h.bookId, bookTitle: h.bookTitle, page: h.page, printed: h.printed, section: whereOf(h), chunk: h.i, ...(h.ocr ? { ocr: true } : {}), ...(h.weak ? { weak: true } : {}),

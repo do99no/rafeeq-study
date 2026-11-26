@@ -83,7 +83,7 @@ export function RichText({ text, citations = [] }: { text: string; citations?: C
         {open && (
           <blockquote className="cite-quote">
             <p>{inline(open.quote)}</p>
-            {open.weak && <p className="muted">في هذه الصفحة معادلات أو رموز لم تُقرأ. راجعها في الصفحة الأصلية.</p>}
+            {open.weak && <p className="muted">في هذه الصفحة رسوم أو معادلات أو رموز لم تُقرأ. راجعها في الصفحة الأصلية.</p>}
             {open.ocr && <p className="muted">قُرئ هذا النص من صورة، فتحقق من الرموز والمعادلات في الصفحة الأصلية.</p>}
             <footer>
               <CiteLink cite={open} />

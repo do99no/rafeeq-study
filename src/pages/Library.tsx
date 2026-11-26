@@ -116,7 +116,7 @@ export default function Library() {
                           </span>
                         </details>
                       )}
-                      {!run && !!d?.weakPages?.length && <p className="muted">{num(d.weakPages.length)} صفحة سقطت منها معادلات أو رموز.</p>}
+                      {!run && !!d?.weakPages?.length && <p className="muted">{num(d.weakPages.length)} صفحة سقطت منها رسوم أو معادلات أو رموز.</p>}
                       {run && <progress max={1} value={d?.progress ?? 0} aria-label="تقدم المعالجة" />}
                       <div className="btn-row book-actions">
                         {run && (

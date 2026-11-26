@@ -139,25 +139,37 @@ export const MIN_PAGE = 60
 
 export function judgeOcr(raw: OcrLine[]): { lines: Line[]; ok: boolean; weak: number } {
   const all = raw.map((l) => ({ ...l, t: clean(l.t).replace(/\s+/g, ' ').trim() })).filter((l) => l.t)
-  const good = all.filter((l) => l.c >= MIN_LINE && /[\p{L}\p{N}]/u.test(l.t))
+  // سطر فيه أرقام أو رموز وقليل من الكلمات الحقيقية: غالباً معادلة قُرئت خطأ حتى لو ارتفعت ثقتها
+  const words = (t: string) => (t.match(/[ء-يA-Za-z]{3,}/g) ?? []).length
+  const formula = (t: string) => /[0-9٠-٩=+×÷√^()<>]/.test(t) && words(t) < 3 && t.length < 60
+  // أسطر الرأس والذيل تبقى: فيها أرقام الصفحات المطبوعة
+  const edge = (i: number) => i < 2 || i >= all.length - 2
+  const good = all.filter((l, i) => l.c >= MIN_LINE && /[\p{L}\p{N}]/u.test(l.t) && (edge(i) || !formula(l.t)))
   const hs = good.map((l) => l.h).sort((a, b) => a - b)
   const mid = hs[hs.length >> 1] || 1
   const size = good.reduce((s, l) => s + l.t.length, 0)
   const conf = size ? good.reduce((s, l) => s + l.c * l.t.length, 0) / size : 0
   const lines = good.map((l) => ({ t: l.t, h: l.h > mid * 1.6 ? 16 : 10, gap: l.gap }))
-  return { lines, ok: conf >= MIN_PAGE && textQuality(lines.map((l) => l.t).join('\n')) === 'ok', weak: all.length - good.length }
+  const lost = all.filter((l) => !good.includes(l) && /[\p{L}\p{N}=+×÷√]{2,}/u.test(l.t) && (formula(l.t) || words(l.t) < 3)).length
+  return { lines, ok: conf >= MIN_PAGE && textQuality(lines.map((l) => l.t).join('\n')) === 'ok', weak: lost >= 2 ? lost : 0 }
 }
 
 const PAGE_NO = /^[\s\-–—|•.()]*([0-9٠-٩]{1,4})[\s\-–—|•.()]*$/
 const edgeLines = (p: PageRec, n: number) => (p.lines.length <= n * 2 ? p.lines : [...p.lines.slice(0, n), ...p.lines.slice(-n)])
 
 /** الرقم المطبوع يُعتمد فقط إذا أيدته الصفحات المجاورة بالإزاحة نفسها. */
-export function printedNumbers(pages: PageRec[]): Map<number, string> {
+export function printedNumbers(pages: PageRec[], running: Set<string> = new Set()): Map<number, string> {
   const found = pages.map((p) => ({
     page: p.page,
     offs: new Set(
       edgeLines(p, 3).flatMap((l) => {
-        const m = l.t.match(PAGE_NO)
+        // الرقم وحده، أو مع عنوان الكتاب المتكرر في الرأس أو الذيل
+        const m = l.t.match(PAGE_NO) ?? (() => {
+          const x = l.t.match(/^[s|/-–—]*([0-9٠-٩]{1,4})[s|/-–—]+(.+)$/) ?? l.t.match(/^(.+?)[s|/-–—]+([0-9٠-٩]{1,4})[s|/-–—]*$/)
+          if (!x) return null
+          const [num, rest] = /^[0-9٠-٩]/.test(x[1]) ? [x[1], x[2]] : [x[2], x[1]]
+          return running.has(key(rest)) ? [l.t, num] : null
+        })()
         return m ? [p.page - Number(toLatinDigits(m[1]))] : []
       }),
     ),
@@ -184,6 +196,17 @@ export function printedNumbers(pages: PageRec[]): Map<number, string> {
 }
 
 const ORD = '(?:ال)?(?:أول|اول|ثاني|ثالث|رابع|خامس|سادس|سابع|ثامن|تاسع|عاشر|حادي|أولى|اولى|ثانية|ثالثة|رابعة|خامسة|سادسة|سابعة|ثامنة|تاسعة|عاشرة|[0-9٠-٩]{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)'
+const ORDINALS: [RegExp, number][] = [
+  [/حادي عشر|الحادية عشرة/, 11], [/ثاني عشر|الثانية عشرة/, 12], [/أول|اول|أولى|اولى|one/, 1], [/ثاني|ثانية|two/, 2], [/ثالث|three/, 3], [/رابع|four/, 4],
+  [/خامس|five/, 5], [/سادس|six/, 6], [/سابع|seven/, 7], [/ثامن|eight/, 8], [/تاسع|nine/, 9], [/عاشر|ten/, 10],
+]
+function ordinal(t: string): number {
+  const head = t.split(/[:،.(]/)[0]
+  const d = toLatinDigits(head).match(/\d{1,2}/)
+  if (d) return Number(d[0])
+  return ORDINALS.find(([re]) => re.test(head))?.[1] ?? 0
+}
+const headWord = (t: string) => normalize(t).split(/\s+/)[0]
 const CHAPTER = new RegExp(`^(?:الباب|الفصل|الوحدة|المحور|unit|chapter|module)\\s*[:(]?\\s*${ORD}(?![\\u0621-\\u064Aa-z])`, 'i')
 const LESSON = new RegExp(`^(?:الدرس|الموضوع|lesson)\\s*[:(]?\\s*${ORD}(?![\\u0621-\\u064Aa-z])`, 'i')
 const headingLevel = (t: string): 1 | 2 | 0 => (t.length > 90 ? 0 : CHAPTER.test(t) ? 1 : LESSON.test(t) ? 2 : 0)
@@ -232,9 +255,9 @@ function splitLong(t: string): string[] {
 export function analyze(bookId: string, pages: PageRec[], bookmarks: Bookmark[]) {
   const usable = pages.filter((p) => p.ok).sort((a, b) => a.page - b.page)
   const lastPage = pages.reduce((m, p) => Math.max(m, p.page), 0)
-  const printed = printedNumbers(pages)
-  for (const p of pages) if (!printed.has(p.page) && p.label) printed.set(p.page, p.label)
   const running = runningLines(usable)
+  const printed = printedNumbers(pages, running)
+  for (const p of pages) if (!printed.has(p.page) && p.label) printed.set(p.page, p.label)
   const heights = usable.flatMap((p) => p.lines.map((l) => l.h)).sort((a, b) => a - b)
   const body = heights[heights.length >> 1] ?? 10
   const useMarks = bookmarks.length >= 3
@@ -251,7 +274,7 @@ export function analyze(bookId: string, pages: PageRec[], bookmarks: Bookmark[])
   let lesson: Section | undefined
 
   for (const p of usable) {
-    const tocPage = p.lines.filter((l) => headingLevel(l.t)).length >= 4 || p.lines.some((l) => /^(الفهرس|المحتويات|فهرس|contents)$/i.test(l.t.trim()))
+    const tocPage = p.lines.filter((l) => headingLevel(l.t)).length >= 4 || p.lines.filter((l) => /(\.{4,}|…{2,})\s*[0-9٠-٩]{1,3}\s*$|^\s*[0-9٠-٩]{1,3}\s*(\.{4,}|…{2,})/.test(l.t)).length >= 3 || p.lines.some((l) => /^(الفهرس|المحتويات|فهرس|contents)$/i.test(l.t.trim()))
     if (useMarks)
       for (const s of sections)
         if (s.page <= p.page) {
@@ -272,7 +295,7 @@ export function analyze(bookId: string, pages: PageRec[], bookmarks: Bookmark[])
       for (const t of splitLong(text))
         chunks.push({
           bookId, i: chunks.length, page: p.page, printed: printed.get(p.page),
-          sectionId: (lesson ?? chapter)?.id, chapter: chapter?.title, lesson: lesson?.title, text: t, ...(p.src === 'ocr' ? { ocr: true } : {}), ...(p.weak ? { weak: true } : {}),
+          sectionId: (lesson ?? chapter)?.id, chapter: chapter?.title, lesson: lesson?.title, ...{ _c: chapter?.id, _l: lesson?.id }, text: t, ...(p.src === 'ocr' ? { ocr: true } : {}), ...(p.weak ? { weak: true } : {}),
         })
     }
     let para = ''
@@ -323,5 +346,29 @@ export function analyze(bookId: string, pages: PageRec[], bookmarks: Bookmark[])
     const next = sections.slice(i + 1).find((n) => n.level <= s.level)
     if (next) s.endPage = Math.max(s.page, next.page > s.page ? next.page - 1 : s.page)
   })
-  return { sections, chunks, printed }
+  // العنوان المكتشف من النص يُعتمد فقط إذا ثبتت نهايته: التالي من مستواه يحمل الرقم الذي يليه
+  // (أو يبدأ وحدة جديدة). غير ذلك يعني أن عنواناً بينهما لم يُقرأ، فلا نخمّن حدود الدرس.
+  const bad = new Set<string>()
+  if (!useMarks)
+    sections.forEach((s, i) => {
+      const rest = sections.slice(i + 1)
+      const next = rest.find((n) => n.level <= s.level)
+      // وحدتان في صفحة واحدة، أو وحدة أقصر من 3 صفحات: غالباً من صفحة الفهرس
+      if (s.level === 1 && (sections.some((o) => o !== s && o.level === 1 && o.page === s.page) || s.endPage - s.page < 2)) return void bad.add(s.id)
+      if (!next) return
+      if (next.level < s.level) return
+      const a = ordinal(s.title)
+      const b = ordinal(next.title)
+      if (!a || !b || b !== a + 1 || headWord(s.title) !== headWord(next.title)) bad.add(s.id)
+    })
+  const kept = sections.filter((s) => !bad.has(s.id))
+  for (const c of chunks as (Chunk & { _c?: string; _l?: string })[]) {
+    if (c._c && bad.has(c._c)) delete c.chapter
+    if (c._l && bad.has(c._l)) delete c.lesson
+    if (c.sectionId && bad.has(c.sectionId)) c.sectionId = c._l && !bad.has(c._l) ? c._l : c._c && !bad.has(c._c) ? c._c : undefined
+    if (!c.sectionId) delete c.sectionId
+    delete c._c
+    delete c._l
+  }
+  return { sections: kept, chunks, printed }
 }

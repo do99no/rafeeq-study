@@ -48,6 +48,16 @@ export async function scopeChunks(scope: Scope): Promise<Hit[]> {
   return lists.flatMap((l) => l.chunks.filter((c) => inScope(c, scope)).map((c) => ({ ...c, bookTitle: titleOf(c.bookId), score: 0 })))
 }
 
+/** مسافة تحرير لا تزيد على حرف واحد */
+function near(a: string, b: string) {
+  if (a === b) return false
+  let i = 0
+  while (i < a.length && i < b.length && a[i] === b[i]) i++
+  const ra = a.slice(i + (a.length >= b.length ? 1 : 0))
+  const rb = b.slice(i + (b.length >= a.length ? 1 : 0))
+  return ra === rb
+}
+
 /** BM25 على كل كتب النطاق معاً */
 export async function textSearch(query: string, scope: Scope, limit = 20): Promise<{ hits: Hit[]; coverage: number }> {
   const q = [...new Set(tokens(query))].filter((t) => !ASK_WORDS.has(t))
@@ -56,7 +66,16 @@ export async function textSearch(query: string, scope: Scope, limit = 20): Promi
   const all = (await Promise.all(ids.map(index))).flatMap((ix) => ix.chunks.map((c, i) => ({ c, tf: ix.tf[i], len: ix.len[i] }))).filter((x) => inScope(x.c, scope))
   if (!all.length) return { hits: [], coverage: 0 }
   const avg = all.reduce((s, x) => s + x.len, 0) / all.length || 1
-  const df = new Map(q.map((t) => [t, all.filter((x) => x.tf.has(t)).length]))
+  // كلمة غائبة تماماً قد تكون قُرئت بحرف مختلف في الصفحات المصورة (الأيسومتري/الأيزومتري)
+  const alias = new Map<string, string[]>(q.map((t) => [t, [t]]))
+  const missing = q.filter((t) => t.length >= 5 && !all.some((x) => x.tf.has(t)))
+  if (missing.length) {
+    const vocab = new Set<string>()
+    for (const x of all) for (const w of x.tf.keys()) if (w.length >= 4) vocab.add(w)
+    for (const t of missing) alias.set(t, [...vocab].filter((w) => Math.abs(w.length - t.length) <= 1 && near(w, t)).slice(0, 4))
+  }
+  const freq = (x: { tf: Map<string, number> }, t: string) => alias.get(t)!.reduce((s, w) => s + (x.tf.get(w) ?? 0), 0)
+  const df = new Map(q.map((t) => [t, all.filter((x) => freq(x, t) > 0).length]))
   const idf = (t: string) => Math.log(1 + (all.length - df.get(t)! + 0.5) / (df.get(t)! + 0.5))
   const total = q.reduce((s, t) => s + idf(t), 0)
   const scored = all
@@ -64,7 +83,7 @@ export async function textSearch(query: string, scope: Scope, limit = 20): Promi
       let score = 0
       let got = 0
       for (const t of q) {
-        const f = x.tf.get(t)
+        const f = freq(x, t)
         if (!f) continue
         got += idf(t)
         score += (idf(t) * f * 2.2) / (f + 1.2 * (0.25 + (0.75 * x.len) / avg))

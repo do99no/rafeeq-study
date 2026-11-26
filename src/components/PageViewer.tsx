@@ -136,7 +136,7 @@ export default function PageViewer({ target }: { target: ViewerTarget }) {
           </blockquote>
         )}
         {bad && <p className="hint">نص هذه الصفحة غير مفهرس، فلن تظهر في البحث.</p>}
-        {weak && <p className="hint">بعض معادلات هذه الصفحة أو رموزها لم تُقرأ، فاعتمد على صورتها هنا.</p>}
+        {weak && <p className="hint">بعض رسوم هذه الصفحة أو معادلاتها أو رموزها لم تُقرأ، فاعتمد على صورتها هنا.</p>}
         {error ? (
           <p className="reader-error">{error}</p>
         ) : (
