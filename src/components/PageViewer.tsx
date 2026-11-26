@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Search, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MessageCircleQuestion, Search, ZoomIn, ZoomOut } from 'lucide-react'
 import type { PDFDocumentProxy } from 'pdfjs-dist/types/src/display/api'
 import { num } from '../lib/format'
 import { getPdf } from '../services/books/db'
 import { useDocs } from '../services/books/process'
-import { textSearch } from '../services/rag/search'
+import { scopeChunks, textSearch } from '../services/rag/search'
+import { PASSAGE_ACTIONS, type PassageAction } from '../services/study/prompts'
+import { queueAsk, startStudy } from '../lib/study'
+import type { Task } from '../types'
 import type { Hit } from '../services/rag/types'
 import { getState, useData } from '../store/store'
 import { openPage, type ViewerTarget } from '../store/viewer'
@@ -22,6 +25,7 @@ export default function PageViewer({ target }: { target: ViewerTarget }) {
   const [zoom, setZoom] = useState(1)
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<Hit[] | null>(null)
+  const [paras, setParas] = useState<Hit[]>([])
   const canvas = useRef<HTMLCanvasElement>(null)
   const box = useRef<HTMLDivElement>(null)
 
@@ -77,6 +81,26 @@ export default function PageViewer({ target }: { target: ViewerTarget }) {
       task?.cancel()
     }
   }, [doc, page, zoom])
+
+  // فقرات الصفحة المقروءة: يختار الطالب واحدة ويطلب شرحها
+  useEffect(() => {
+    let dead = false
+    if (!meta?.chunkCount) return
+    void scopeChunks({ bookIds: [bookId], pages: { bookId, from: page, to: page } }).then((h) => !dead && setParas(h.filter((x) => x.text.length > 40)))
+    return () => {
+      dead = true
+    }
+  }, [bookId, page, meta?.chunkCount])
+
+  const TASK_OF: Record<PassageAction, Task> = { simple: 'answer', detail: 'answer', steps: 'steps', example: 'examples', terms: 'terms', question: 'check' }
+  const askAbout = (h: Hit, a: PassageAction) => {
+    const ask = { text: `${PASSAGE_ACTIONS[a].ask} (ص ${num(h.page)})`, task: TASK_OF[a], basis: [{ bookId, i: h.i }], quote: h.text }
+    const nb = location.hash.match(/^#\/notebooks\/(.+)$/)?.[1]
+    const here = nb && getState().data.notebooks.find((n) => n.id === nb && n.bookIds.includes(bookId))
+    openPage(null)
+    if (here) queueAsk(here.id, ask)
+    else startStudy(bookId, undefined, ask)
+  }
 
   const bad = meta?.badPages.includes(page)
   const weak = meta?.weakPages?.includes(page)
@@ -144,6 +168,27 @@ export default function PageViewer({ target }: { target: ViewerTarget }) {
             {!doc && <p className="muted">جارٍ فتح الكتاب…</p>}
             <canvas dir="ltr" ref={canvas} role="img" aria-label={`صفحة ${num(page)}`} />
           </div>
+        )}
+        {paras.length > 0 && (
+          <section className="page-paras" aria-label="اسأل عن فقرة من هذه الصفحة">
+            <h3>
+              <MessageCircleQuestion aria-hidden="true" /> اسأل رفيق عن فقرة من هذه الصفحة
+            </h3>
+            {paras.map((h) => (
+              <details key={h.i} className="para">
+                <summary>{h.text.slice(0, 140)}{h.text.length > 140 ? '…' : ''}</summary>
+                <p className="para-text">{h.text}</p>
+                <div className="chips">
+                  {(Object.keys(PASSAGE_ACTIONS) as PassageAction[]).map((a) => (
+                    <button key={a} className="chip" onClick={() => askAbout(h, a)}>
+                      {PASSAGE_ACTIONS[a].label}
+                    </button>
+                  ))}
+                </div>
+              </details>
+            ))}
+            <p className="hint">النص مقروء آلياً من الصفحة وقد تخطئ رموزه؛ الصورة أعلاه هي المرجع.</p>
+          </section>
         )}
       </div>
     </Dialog>

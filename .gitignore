@@ -11,3 +11,4 @@ public/vendor
 /books/
 /books-work/
 /books-alt/
+*.tsbuildinfo

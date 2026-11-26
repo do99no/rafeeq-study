@@ -30,12 +30,12 @@ export async function importPack(file: File): Promise<Book> {
   if (size > file.size) throw new Error('pack')
   const json = await new Response(file.slice(12, 12 + size).stream().pipeThrough(new DecompressionStream('gzip'))).json()
   const pdf = file.slice(12 + size, file.size, 'application/pdf')
-  const { meta, pages, chunks, title } = json
+  const { meta, pages, chunks, title, subject } = json
   // الحزمة لا تُقبل إلا إذا طابق المعرّف محتوى PDF نفسه
   if (meta?.id !== (await contentId(pdf)) || !Array.isArray(pages) || !Array.isArray(chunks) || !chunks.every((c) => c.bookId === meta.id)) throw new Error('pack')
   await putPdf(meta.id, pdf)
   await restoreDoc(meta, pages, chunks)
-  return { id: meta.id, title: String(title).slice(0, 100), kind: 'pdf', sizeBytes: pdf.size, addedAt: Date.now() }
+  return { id: meta.id, title: String(title).slice(0, 100), kind: 'pdf', sizeBytes: pdf.size, addedAt: Date.now(), ...(typeof subject === 'string' ? { subject: subject.slice(0, 60) } : {}) }
 }
 const isPack = async (file: File) => new TextDecoder().decode(await file.slice(0, 8).arrayBuffer()) === 'RAFEEQ01'
 

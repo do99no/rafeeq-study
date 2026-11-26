@@ -39,11 +39,14 @@ function index(id: string): Promise<Index> {
 const ASK_WORDS = new Set(tokens('اشرح شرح مبسط بسيط بسط بأسلوب اسلوب أبسط مثال أمثلة تفصيل بالتفصيل لخص ملخص قارن عدد علل فسر اكتب أريد ممكن فضلك الدرس الكتاب الفرق معنى تعريف وضح خطوة'))
 
 const titleOf = (id: string) => getState().data.books.find((b) => b.id === id)?.title ?? ''
-const inScope = (c: Chunk, s: Scope) => !s.pages || (c.bookId === s.pages.bookId && c.page >= s.pages.from && c.page <= s.pages.to)
+const inRange = (c: Chunk, r: { bookId: string; from: number; to: number }) => c.bookId === r.bookId && c.page >= r.from && c.page <= r.to
+const inScope = (c: Chunk, s: Scope) => (s.ranges?.length ? s.ranges.some((r) => inRange(c, r)) : !s.pages || inRange(c, s.pages))
+/** الكتب التي يلزم قراءتها لهذا النطاق */
+export const scopeBooks = (s: Scope) => (s.ranges?.length ? [...new Set(s.ranges.map((r) => r.bookId))] : s.pages ? [s.pages.bookId] : s.bookIds)
 
 /** كل مقاطع النطاق بترتيب الكتاب */
 export async function scopeChunks(scope: Scope): Promise<Hit[]> {
-  const ids = scope.pages ? [scope.pages.bookId] : scope.bookIds
+  const ids = scopeBooks(scope)
   const lists = await Promise.all(ids.map((id) => index(id)))
   return lists.flatMap((l) => l.chunks.filter((c) => inScope(c, scope)).map((c) => ({ ...c, bookTitle: titleOf(c.bookId), score: 0 })))
 }
@@ -62,7 +65,7 @@ function near(a: string, b: string) {
 export async function textSearch(query: string, scope: Scope, limit = 20): Promise<{ hits: Hit[]; coverage: number }> {
   const q = [...new Set(tokens(query))].filter((t) => !ASK_WORDS.has(t))
   if (!q.length) return { hits: [], coverage: 0 }
-  const ids = scope.pages ? [scope.pages.bookId] : scope.bookIds
+  const ids = scopeBooks(scope)
   const all = (await Promise.all(ids.map(index))).flatMap((ix) => ix.chunks.map((c, i) => ({ c, tf: ix.tf[i], len: ix.len[i] }))).filter((x) => inScope(x.c, scope))
   if (!all.length) return { hits: [], coverage: 0 }
   const avg = all.reduce((s, x) => s + x.len, 0) / all.length || 1
@@ -106,7 +109,7 @@ const unit = (v: ArrayLike<number>) => {
 }
 
 async function vectorSearch(query: string, scope: Scope, signal: AbortSignal, limit = 20): Promise<Hit[]> {
-  const ids = scope.pages ? [scope.pages.bookId] : scope.bookIds
+  const ids = scopeBooks(scope)
   const recs = (await Promise.all(ids.map(getVectors))).filter((v): v is VectorRec => !!v && v.done > 0)
   const out: Hit[] = []
   for (const model of new Set(recs.map((r) => r.model))) {
@@ -148,7 +151,7 @@ export async function search(query: string, scope: Scope, signal: AbortSignal, l
     if (order) hits = order.map((i) => hits[i])
   }
   const top = hits.slice(0, limit)
-  if (!scope.pages)
+  if (!scope.pages && !scope.ranges?.length)
     for (const id of scope.bookIds) {
       if (top.some((h) => h.bookId === id)) continue
       const best = hits.find((h) => h.bookId === id)

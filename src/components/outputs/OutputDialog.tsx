@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Pencil } from 'lucide-react'
 import { actions } from '../../store/store'
 import { toast } from '../../store/toast'
 import type { StudyOutput } from '../../types'
@@ -26,10 +27,10 @@ function NoteView({ output, text, onDone }: { output: StudyOutput; text: string;
         <input maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} />
       </label>
       <label className="field">
-        <span>الملاحظة</span>
+        <span>{output.data.kind === 'note' ? 'الملاحظة' : 'النص'}</span>
         <textarea className="input note-area" rows={9} maxLength={20000} value={body} onChange={(e) => setBody(e.target.value)} />
       </label>
-      {output.data.kind === 'note' && output.data.citations.length > 0 && <RichText text="" citations={output.data.citations} />}
+      {output.data.kind !== 'quiz' && output.data.kind !== 'cards' && output.data.kind !== 'mindmap' && output.data.citations.length > 0 && <RichText text="" citations={output.data.citations} />}
       <div className="dialog-actions">
         <button className="btn btn-primary">حفظ</button>
       </div>
@@ -39,11 +40,24 @@ function NoteView({ output, text, onDone }: { output: StudyOutput; text: string;
 
 export default function OutputDialog({ output, onClose }: { output: StudyOutput; onClose: () => void }) {
   const { data } = output
+  const [editing, setEditing] = useState(false)
   return (
     <Dialog variant="wide" title={output.title} onClose={onClose}>
-      {(data.kind === 'summary' || data.kind === 'compare') && <RichText text={data.text} citations={data.citations} />}
+      {(data.kind === 'summary' || data.kind === 'compare') &&
+        (editing ? (
+          <NoteView output={output} text={data.text} onDone={() => setEditing(false)} />
+        ) : (
+          <>
+            <div>
+              <button className="btn btn-sm" onClick={() => setEditing(true)}>
+                <Pencil aria-hidden="true" /> تعديل
+              </button>
+            </div>
+            <RichText text={data.text} citations={data.citations} />
+          </>
+        ))}
       {data.kind === 'note' && <NoteView output={output} text={data.text} onDone={onClose} />}
-      {data.kind === 'quiz' && <QuizView outputId={output.id} questions={data.questions} />}
+      {data.kind === 'quiz' && <QuizView output={output} questions={data.questions} onClose={onClose} />}
       {data.kind === 'cards' && <CardsView outputId={output.id} cards={data.cards} known={data.known} />}
       {data.kind === 'mindmap' && <MindMapView root={data.root} />}
     </Dialog>

@@ -51,7 +51,10 @@ for (const f of allBooks().filter((x) => /\.pdf$/i.test(x))) {
     const j = st.judgeOcr(JSON.parse(readFileSync(of, 'utf8')).lines)
     return { bookId: id, page: p.page, lines: j.lines, src: 'ocr', ok: j.ok, ...(j.weak ? { weak: j.weak } : {}) }
   })
-  const { sections, chunks, printed } = st.analyze(id, pages, c.sections ?? [])
+  // قوائم الدروس من فهارس الكتب، وكل بند فيها متحقق منه على صفحته (books-work/toc)
+  const tocFile = `${W}/toc/${id}.json`
+  const toc = existsSync(tocFile) ? JSON.parse(readFileSync(tocFile, 'utf8')).sections.filter((x) => !x.unverified) : c.sections ?? []
+  const { sections, chunks, printed } = st.analyze(id, pages, toc)
   const bad = pages.filter((p) => !p.ok).map((p) => p.page)
   const meta = {
     id, status: bad.length > Math.max(2, pages.length * 0.1) ? 'review' : 'done', pageCount: pages.length,
@@ -60,19 +63,30 @@ for (const f of allBooks().filter((x) => /\.pdf$/i.test(x))) {
     language: st.detectLanguage(chunks.map((x) => x.text).join(' ')), sections, chunkCount: chunks.length,
   }
   if (meta.status === 'review') meta.reason = 'صفحات كثيرة لم يُقرأ نصها بجودة كافية (معادلات أو رسومات غالباً)، ولم تدخل البحث. صورها متاحة في القارئ.'
+  // نسخة الفهرس: تتغير عند أي تعديل في الدروس أو المقاطع، فيُحدَّث الكتاب دون إعادة تنزيل PDF
+  const v = createHash('sha256').update(JSON.stringify({ meta, chunks })).digest('hex').slice(0, 12)
+  meta.v = v
   const head = gzipSync(JSON.stringify({ title: c.title, subject: c.subject, meta, pages, chunks }))
   const size = Buffer.alloc(4)
   size.writeUInt32BE(head.length)
   const pack = Buffer.concat([Buffer.from('RAFEEQ01'), size, head, pdf])
   writeFileSync(`${W}/packs/${c.title}.rafeeq`, pack)
   const sum = createHash('sha256').update(pack).digest('hex')
-  if (cache[id]?.sum !== sum || !existsSync(`public/library/${cache[id].file}`)) {
+  // ملف PDF المشفر لا يُعاد إلا إذا غاب: تحديثات الفهرس تصل عبر ملف idx الصغير
+  if (!cache[id]?.file || !existsSync(`public/library/${cache[id].file}`)) {
     const name = `${randomBytes(8).toString('hex')}.bin`
     writeFileSync(`public/library/${name}`, seal(pack))
-    cache[id] = { sum, file: name }
+    cache[id] = { ...cache[id], sum, file: name, size: pack.length }
+  }
+  // الفهرس وحده (دون PDF) لتحديث الكتب المنزّلة
+  if (cache[id].v !== v || !cache[id].idx || !existsSync(`public/library/${cache[id].idx}`)) {
+    const idx = `${randomBytes(8).toString('hex')}.bin`
+    writeFileSync(`public/library/${idx}`, seal(head))
+    cache[id] = { ...cache[id], v, idx }
   }
   keep.add(cache[id].file)
-  manifest.push({ id, title: c.title, subject: c.subject, file: cache[id].file, size: pack.length, pages: meta.pageCount, chunks: meta.chunkCount })
+  keep.add(cache[id].idx)
+  manifest.push({ id, title: c.title, subject: c.subject, file: cache[id].file, size: cache[id].size ?? pack.length, pages: meta.pageCount, chunks: meta.chunkCount, v, idx: cache[id].idx, idxSize: head.length })
   report.push({ file: f, id, ...c, pages: meta.pageCount, text: meta.textPages, ocr: meta.ocrPages, bad, weak: meta.weakPages, chunks: chunks.length, sections: sections.length, printed: printed.size, status: meta.status })
 }
 const mjson = JSON.stringify(manifest)

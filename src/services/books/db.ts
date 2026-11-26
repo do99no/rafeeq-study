@@ -66,6 +66,7 @@ export const replaceChunks = (id: string, list: Chunk[]) =>
     list.forEach((c) => s.put(c))
   })
 export const getVectors = (id: string) => tx<VectorRec | undefined>(['vectors'], 'readonly', (t) => t.objectStore('vectors').get(id))
+export const deleteVectors = (id: string) => tx(['vectors'], 'readwrite', (t) => t.objectStore('vectors').delete(id))
 export const putVectors = (v: VectorRec) => tx(['vectors'], 'readwrite', (t) => t.objectStore('vectors').put(v))
 export const deleteDoc = (id: string) =>
   tx(['pdfs', 'docs', 'pages', 'chunks', 'vectors'], 'readwrite', (t) => {

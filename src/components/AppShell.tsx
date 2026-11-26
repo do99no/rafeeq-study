@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { BookOpen, GraduationCap, House, Library, Menu, NotebookTabs, Settings, Users } from 'lucide-react'
+import { BookOpen, ChartNoAxesColumn, GraduationCap, House, Library, Menu, NotebookTabs, Settings, Users } from 'lucide-react'
 import { Link } from '../router'
 import { actions, useStore } from '../store/store'
 import { Dialog } from './Dialog'
@@ -9,6 +9,7 @@ const NAV = [
   { to: '/notebooks', label: 'الدفاتر', icon: NotebookTabs },
   { to: '/library', label: 'المكتبة', icon: Library },
   { to: '/review', label: 'المراجعة', icon: GraduationCap },
+  { to: '/progress', label: 'التقدم', icon: ChartNoAxesColumn },
   { to: '/settings', label: 'الإعدادات', icon: Settings },
 ]
 

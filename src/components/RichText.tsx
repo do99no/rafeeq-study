@@ -4,7 +4,7 @@ import { num } from '../lib/format'
 import { openPage } from '../store/viewer'
 import type { Citation } from '../types'
 
-/** عرض آمن لتنسيق محدود: **عريض** و`معادلة` و- قوائم و[رقم] استشهاد. */
+/** عرض آمن لتنسيق محدود: **عريض** و`معادلة` و[رقم] استشهاد. */
 function inline(text: string, onCite?: (n: number) => ReactNode): ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[\d+\])/g).map((part, i) => {
     if (part.startsWith('**') && part.length > 4) return <strong key={i}>{part.slice(2, -2)}</strong>
@@ -15,7 +15,7 @@ function inline(text: string, onCite?: (n: number) => ReactNode): ReactNode[] {
         </bdi>
       )
     const n = part.match(/^\[(\d+)\]$/)
-    if (n && onCite) return <span key={i}>{onCite(Number(n[1]))}</span>
+    if (n) return onCite ? <span key={i}>{onCite(Number(n[1]))}</span> : null
     return part
   })
 }
@@ -37,6 +37,95 @@ export function CiteLink({ cite }: { cite: Citation }) {
   )
 }
 
+const TABLE_ROW = /^\s*\|.*\|\s*$/
+const TABLE_SEP = /^\s*\|?(\s*:?-{2,}:?\s*\|)+\s*:?-*:?\s*\|?\s*$/
+const BULLET = /^\s*[-•*]\s+(.*)$/
+const NUMBERED = /^\s*([0-9٠-٩]+)[.)]\s+(.*)$/
+const QUOTE = /^\s*>/
+const cells = (l: string) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+
+/** يحوّل النص إلى كتل: عناوين، فقرات، قوائم، جداول، وإضافات رفيق المميزة عن الكتاب */
+function blocksOf(text: string, cite?: (n: number) => ReactNode): ReactNode[] {
+  const blocks: ReactNode[] = []
+  const lines = text.split('\n')
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    const k = blocks.length
+    if (TABLE_ROW.test(line) && TABLE_SEP.test(lines[i + 1] ?? '')) {
+      const head = cells(line)
+      const body: string[][] = []
+      i += 2
+      while (i < lines.length && TABLE_ROW.test(lines[i])) body.push(cells(lines[i++]))
+      blocks.push(
+        <div key={k} className="table-wrap" tabIndex={0} role="region" aria-label="جدول">
+          <table>
+            <thead>
+              <tr>
+                {head.map((c, j) => (
+                  <th key={j}>{inline(c.replace(/\*\*/g, ''), cite)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {body.map((r, x) => (
+                <tr key={x}>
+                  {head.map((_, j) => (
+                    <td key={j}>{inline(r[j] ?? '', cite)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      )
+      continue
+    }
+    if (QUOTE.test(line)) {
+      const box: string[] = []
+      while (i < lines.length && QUOTE.test(lines[i])) box.push(lines[i++].replace(/^\s*>\s?/, ''))
+      blocks.push(
+        <aside key={k} className="extra">
+          <small>من رفيق، ليس من الكتاب</small>
+          {box
+            .filter((b) => b.trim())
+            .map((b, j) => (
+              <p key={j}>{inline(b.replace(/^\s*[-•*]\s+/, '• ').replace(/\[\d+\]/g, ''))}</p>
+            ))}
+        </aside>,
+      )
+      continue
+    }
+    if (BULLET.test(line) || NUMBERED.test(line)) {
+      const re = NUMBERED.test(line) ? NUMBERED : BULLET
+      const items: string[] = []
+      while (i < lines.length && re.test(lines[i])) {
+        let item = lines[i].match(re)!.at(-1)!
+        i++
+        // سطر تابع بمسافة بادئة يُلحق بالبند نفسه
+        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !BULLET.test(lines[i]) && !NUMBERED.test(lines[i])) item += `\n${lines[i++].trim()}`
+        items.push(item)
+      }
+      const lis = items.map((l, j) => (
+        <li key={j}>
+          {l.split('\n').map((p, x) => (
+            <span key={x} className={x ? 'li-more' : undefined}>
+              {inline(p, cite)}
+            </span>
+          ))}
+        </li>
+      ))
+      blocks.push(re === NUMBERED ? <ol key={k}>{lis}</ol> : <ul key={k}>{lis}</ul>)
+      continue
+    }
+    const head = line.match(/^\s*#{1,4}\s+(.*)$/)
+    if (head) blocks.push(<h4 key={k}>{inline(head[1].replace(/\*\*/g, ''), cite)}</h4>)
+    else if (line.trim()) blocks.push(<p key={k}>{inline(line, cite)}</p>)
+    i++
+  }
+  return blocks
+}
+
 export function RichText({ text, citations = [] }: { text: string; citations?: Citation[] }) {
   const [openN, setOpenN] = useState<number | null>(null)
   const panelId = useId()
@@ -52,33 +141,9 @@ export function RichText({ text, citations = [] }: { text: string; citations?: C
     )
   }
 
-  const blocks: ReactNode[] = []
-  let list: string[] = []
-  const flush = () => {
-    if (list.length)
-      blocks.push(
-        <ul key={blocks.length}>
-          {list.map((l, i) => (
-            <li key={i}>{inline(l, cite)}</li>
-          ))}
-        </ul>,
-      )
-    list = []
-  }
-  for (const line of text.split('\n')) {
-    const item = line.match(/^\s*[-•*]\s+(.*)$/)
-    if (item) list.push(item[1])
-    else {
-      flush()
-      const head = line.match(/^#{1,4}\s+(.*)$/)
-      if (line.trim()) blocks.push(<p key={blocks.length}>{head ? <strong>{inline(head[1].replace(/\*\*/g, ''), cite)}</strong> : inline(line, cite)}</p>)
-    }
-  }
-  flush()
-
   return (
     <div className="rich">
-      {blocks}
+      {blocksOf(text, cite)}
       <div id={panelId}>
         {open && (
           <blockquote className="cite-quote">

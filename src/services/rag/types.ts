@@ -4,6 +4,8 @@ import type { Chunk } from '../books/types'
 export interface Scope {
   bookIds: string[]
   pages?: { bookId: string; from: number; to: number }
+  /** عدة دروس أو نطاقات صفحات، وقد تكون من كتب مختلفة */
+  ranges?: { bookId: string; from: number; to: number }[]
 }
 export interface Hit extends Chunk {
   bookTitle: string

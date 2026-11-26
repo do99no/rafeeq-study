@@ -9,7 +9,27 @@ export interface Notebook {
   bookIds: string[]
   createdAt: number
   lastOpenedAt: number
+  /** الدرس أو الصفحات التي يدرسها الطالب الآن في هذا الدفتر */
+  focus?: Focus
+  /** المحادثة الحالية؛ القديمة محفوظة في chats. الغياب يعني المحادثة الأولى (معرّفها معرّف الدفتر). */
+  chatId?: string
+  chats?: ChatInfo[]
 }
+
+/** نطاق الدراسة: درس من الفهرس أو صفحات PDF محددة */
+export interface Focus {
+  bookId: string
+  from: number
+  to: number
+  title: string
+  sectionId?: string
+}
+export interface ChatInfo {
+  id: string
+  title: string
+  at: number
+}
+export type Level = 'simple' | 'normal' | 'deep'
 
 /** بطاقة الكتاب في مكتبة الطالب. حالة المعالجة محفوظة في DocMeta. */
 export interface Book {
@@ -18,6 +38,7 @@ export interface Book {
   kind: 'pdf'
   sizeBytes: number
   addedAt: number
+  subject?: string
 }
 
 export interface Citation {
@@ -48,9 +69,29 @@ export interface Message {
   mode?: 'ai' | 'search' | 'none'
   provider?: string
   createdAt: number
+  /** نوع الرد التعليمي، للعرض والمتابعة */
+  task?: Task
+  /** سؤال فهم ينتظر إجابة الطالب */
+  check?: Check
+  /** نتيجة تصحيح إجابة الطالب عن سؤال الفهم */
+  verdict?: Verdict
+  /** جزء من شرح درس طويل: k من n */
+  part?: { k: number; n: number }
+  /** حُوِّلت إلى ملخص أو بطاقات… محفوظة */
+  savedAs?: string
+}
+export type Task = 'answer' | 'explain' | 'teach' | 'summary' | 'points' | 'mistakes' | 'examples' | 'steps' | 'compare' | 'check' | 'grade' | 'terms' | 'search'
+export type Verdict = 'correct' | 'partial' | 'wrong' | 'skipped'
+export interface Check {
+  q: string
+  answer: string
+  options?: string[]
+  cite?: Citation
+  /** أُجيب عنه أو تُخطي */
+  closed?: boolean
 }
 
-export type QuestionType = 'mcq' | 'tf' | 'fill' | 'short' | 'essay' | 'problem'
+export type QuestionType = 'mcq' | 'tf' | 'fill' | 'short' | 'reason' | 'essay' | 'problem'
 export interface QuizQuestion {
   type: QuestionType
   q: string
@@ -60,11 +101,21 @@ export interface QuizQuestion {
   why: string
   cite: Citation
 }
+export type CardType = 'term' | 'question' | 'law' | 'fact' | 'example'
 export interface Flashcard {
   id: string
   front: string
   back: string
-  cite: Citation
+  /** البطاقة اليدوية قد تكون بلا مرجع */
+  cite?: Citation
+  type?: CardType
+  extra?: string
+  example?: string
+  /** صندوق التكرار المتباعد 0..5، والموعد التالي */
+  box?: number
+  due?: number
+  hard?: boolean
+  manual?: boolean
 }
 export interface MindNode {
   label: string
@@ -95,12 +146,44 @@ export interface QuizAttempt {
   score: number
   total: number
   at: number
+  results?: boolean[]
+}
+
+/** خطأ في سؤال: يُستخدم لتحديد ما يحتاج إلى مراجعة */
+export interface Mistake {
+  id: string
+  bookId: string
+  bookTitle: string
+  page: number
+  /** الدرس أو الفصل، أو عنوان نطاق الدراسة */
+  topic: string
+  q: string
+  answer: string
+  given?: string
+  at: number
+  source: 'quiz' | 'chat'
+  notebookId?: string
+  resolved?: boolean
+}
+/** ما درسه الطالب: يُحدَّث عند الشرح أو التعليم خطوة بخطوة أو الاختبار */
+export interface Studied {
+  key: string
+  bookId: string
+  title: string
+  from: number
+  to: number
+  notebookId: string
+  explained?: number
+  taught?: { k: number; n: number }
+  checks?: { right: number; total: number }
+  at: number
 }
 
 export interface Settings {
   theme: 'light' | 'dark' | 'auto'
   textSize: 'normal' | 'large'
   digits: 'arab' | 'latn'
+  level: Level
 }
 
 /** كل ما يخص طالباً واحداً. يُخزَّن منفصلاً عن الطالب الآخر. */
@@ -111,6 +194,8 @@ export interface StudentData {
   outputs: StudyOutput[]
   attempts: QuizAttempt[]
   settings: Settings
+  studied: Record<string, Studied>
+  mistakes: Mistake[]
 }
 
 export interface Profile {

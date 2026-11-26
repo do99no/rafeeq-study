@@ -24,6 +24,8 @@ export interface DocMeta {
   language: 'ar' | 'en' | 'mixed' | 'unknown'
   sections: Section[]
   chunkCount: number
+  /** نسخة الفهرس المنشورة، لتحديث الكتاب دون إعادة تنزيله */
+  v?: string
 }
 
 export interface Line {

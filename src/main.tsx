@@ -8,6 +8,7 @@ import '@fontsource/ibm-plex-sans-arabic/latin-600.css'
 import './styles/base.css'
 import './styles/app.css'
 import './styles/workspace.css'
+import './styles/study.css'
 import { App } from './App'
 
 createRoot(document.getElementById('root')!).render(

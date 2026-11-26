@@ -1,18 +1,18 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react'
-import { BookMarked, Eraser, NotebookPen, Pencil, WandSparkles } from 'lucide-react'
-import { ConfirmDialog, Dialog } from '../components/Dialog'
+import { BookMarked, History, MessageSquarePlus, NotebookPen, Pencil, Trash2, WandSparkles } from 'lucide-react'
+import { Dialog } from '../components/Dialog'
 import { EmptyState } from '../components/EmptyState'
 import { NotebookForm } from '../components/NotebookForm'
 import { ChatPanel } from '../components/workspace/ChatPanel'
 import { AddSourceDialog, SourcesPanel } from '../components/workspace/SourcesPanel'
 import { ToolsPanel } from '../components/workspace/ToolsPanel'
 import type { ToolKind } from '../components/workspace/ToolDialog'
-import { num } from '../lib/format'
+import { ago, num } from '../lib/format'
 import { useAI } from '../services/ai/manager'
 import { isSearchable, useDocs } from '../services/books/process'
 import { buildVectors } from '../services/rag/search'
 import { Link } from '../router'
-import { actions, useData } from '../store/store'
+import { actions, chatOf, useData } from '../store/store'
 
 const OutputDialog = lazy(() => import('../components/outputs/OutputDialog'))
 const ToolDialog = lazy(() => import('../components/workspace/ToolDialog'))
@@ -35,7 +35,7 @@ export default function Workspace({ id }: { id: string }) {
   const isWide = useWide()
   const [off, setOff] = useState<string[]>([])
   const [drawer, setDrawer] = useState<'sources' | 'tools' | null>(null)
-  const [dialog, setDialog] = useState<'add' | 'edit' | 'clear' | null>(null)
+  const [dialog, setDialog] = useState<'add' | 'edit' | 'history' | null>(null)
   const [outputId, setOutputId] = useState<string | null>(null)
   const [tool, setTool] = useState<ToolKind | null>(null)
 
@@ -115,8 +115,11 @@ export default function Workspace({ id }: { id: string }) {
           <button className="icon-btn" onClick={() => setDialog('edit')} aria-label="تعديل الدفتر" title="تعديل الدفتر">
             <Pencil />
           </button>
-          <button className="icon-btn" disabled={!data.messages[id]?.length} onClick={() => setDialog('clear')} aria-label="مسح المحادثة" title="مسح المحادثة">
-            <Eraser />
+          <button className="icon-btn" disabled={!data.messages[chatOf(notebook)]?.length} onClick={() => actions.newChat(id)} aria-label="محادثة جديدة" title="محادثة جديدة">
+            <MessageSquarePlus />
+          </button>
+          <button className="icon-btn" disabled={!notebook.chats?.length} onClick={() => setDialog('history')} aria-label="المحادثات السابقة" title="المحادثات السابقة">
+            <History />
           </button>
         </div>
       </header>
@@ -127,7 +130,7 @@ export default function Workspace({ id }: { id: string }) {
           {sources}
         </aside>
       )}
-      <ChatPanel notebook={notebook} books={books} activeIds={activeIds} onAddSource={addSource} />
+      <ChatPanel key={chatOf(notebook)} notebook={notebook} books={books} activeIds={activeIds} onAddSource={addSource} onOpenOutput={(o) => setOutputId(o.id)} />
       {isWide && (
         <aside className="ws-side" aria-labelledby="tools-h">
           <h2 id="tools-h">أدوات الدراسة</h2>
@@ -147,14 +150,33 @@ export default function Workspace({ id }: { id: string }) {
       )}
       {dialog === 'add' && <AddSourceDialog notebook={notebook} onClose={() => setDialog(null)} />}
       {dialog === 'edit' && <NotebookForm notebook={notebook} onClose={() => setDialog(null)} />}
-      {dialog === 'clear' && (
-        <ConfirmDialog
-          title="مسح المحادثة"
-          text="ستُحذف رسائل هذا الدفتر. الملخصات والاختبارات المحفوظة تبقى."
-          action="مسح المحادثة"
-          onConfirm={() => actions.clearMessages(id)}
-          onClose={() => setDialog(null)}
-        />
+      {dialog === 'history' && (
+        <Dialog title="المحادثات السابقة" onClose={() => setDialog(null)}>
+          <ul className="saved">
+            {(notebook.chats ?? []).map((c) => (
+              <li key={c.id} className="source-row">
+                <button
+                  className="saved-open"
+                  onClick={() => {
+                    actions.openChat(id, c.id)
+                    setDialog(null)
+                  }}
+                >
+                  <History aria-hidden="true" />
+                  <span className="grow">
+                    <span className="book-title">{c.title}</span>
+                    <small className="muted">
+                      {num(data.messages[c.id]?.length ?? 0)} رسالة، {ago(c.at)}
+                    </small>
+                  </span>
+                </button>
+                <button className="icon-btn" onClick={() => actions.deleteChat(id, c.id)} aria-label={`حذف «${c.title}»`}>
+                  <Trash2 />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Dialog>
       )}
       {tool && (
         <Suspense fallback={null}>

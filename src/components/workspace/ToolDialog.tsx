@@ -39,7 +39,9 @@ export default function ToolDialog({ kind, notebook, books, onClose, onDone }: P
   const docs = useDocs()
   const ids = books.map((b) => b.id)
   const firstSection = books.length === 1 ? docs[books[0].id]?.sections[0] : undefined
-  const [scope, setScope] = useState(firstSection ? `sec:${books[0].id}:${firstSection.id}` : 'all')
+  const fo = notebook.focus && ids.includes(notebook.focus.bookId) ? notebook.focus : undefined
+  const [scope, setScope] = useState(fo ? (fo.sectionId ? `sec:${fo.bookId}:${fo.sectionId}` : `pages:${fo.bookId}:${fo.from}:${fo.to}`) : firstSection ? `sec:${books[0].id}:${firstSection.id}` : 'all')
+  const [multi, setMulti] = useState<string[] | null>(null)
   const [scopeB, setScopeB] = useState('all')
   const [style, setStyle] = useState<SummaryStyle>('full')
   const [types, setTypes] = useState<QuestionType[]>(['mcq', 'tf'])
@@ -52,9 +54,14 @@ export default function ToolDialog({ kind, notebook, books, onClose, onDone }: P
   const ctrl = useRef<AbortController>(null)
   useEffect(() => () => ctrl.current?.abort(), [])
 
-  const sc = toScope(scope, ids, docs)
+  const ranges = (multi ?? []).flatMap((k) => {
+    const [b, sid] = k.split(':')
+    const sec = docs[b]?.sections.find((x) => x.id === sid)
+    return sec ? [{ bookId: b, from: sec.page, to: sec.endPage }] : []
+  })
+  const sc = multi ? { bookIds: ids, ranges } : toScope(scope, ids, docs)
   const scB = toScope(scopeB, ids, docs)
-  const ready = kind === 'quiz' ? types.length > 0 : kind === 'compare' ? (topicA.trim() && topicB.trim()) || (scope !== scopeB && !!(topicA.trim() || scope !== 'all') && !!(topicB.trim() || scopeB !== 'all')) : true
+  const ready = multi && !ranges.length ? false : kind === 'quiz' ? types.length > 0 : kind === 'compare' ? (topicA.trim() && topicB.trim()) || (scope !== scopeB && !!(topicA.trim() || scope !== 'all') && !!(topicB.trim() || scopeB !== 'all')) : true
 
   const run = async () => {
     const c = (ctrl.current = new AbortController())
@@ -69,7 +76,7 @@ export default function ToolDialog({ kind, notebook, books, onClose, onDone }: P
       else if (kind === 'mindmap') data = await makeMindmap(sc, notebook.title, c.signal)
       else data = await makeCompare({ topic: topicA.trim(), scope: sc }, { topic: topicB.trim(), scope: scB }, c.signal)
       if (c.signal.aborted || getState().activeId !== profileId) return
-      const sec = scope.startsWith('sec:') ? docs[scope.split(':')[1]]?.sections.find((s) => s.id === scope.split(':')[2])?.title : undefined
+      const sec = multi ? `${num(ranges.length)} دروس` : scope.startsWith('sec:') ? docs[scope.split(':')[1]]?.sections.find((s) => s.id === scope.split(':')[2])?.title : undefined
       const name = kind === 'compare' ? [topicA, topicB].map((t) => t.trim()).filter(Boolean).join(' و') || notebook.title : (sec ?? notebook.title)
       const label = kind === 'summary' ? `ملخص ${SUMMARY_STYLES[style].label}` : outputMeta[kind].label
       const o: StudyOutput = { id: uid(), notebookId: notebook.id, title: `${label}: ${name}`, createdAt: Date.now(), data }
@@ -111,7 +118,29 @@ export default function ToolDialog({ kind, notebook, books, onClose, onDone }: P
         ) : (
           <div className="field">
             <span>من أين؟</span>
-            <ScopePicker books={books} value={scope} onChange={setScope} />
+            {!multi && <ScopePicker books={books} value={scope} onChange={setScope} />}
+            <button type="button" className="text-link" onClick={() => setMulti(multi ? null : [])}>
+              {multi ? 'نطاق واحد' : 'اختر عدة دروس'}
+            </button>
+            {multi && (
+              <div className="multi-lessons">
+                {books.map((b) => (
+                  <fieldset key={b.id}>
+                    <legend>{b.title}</legend>
+                    {(docs[b.id]?.sections ?? []).map((x) => {
+                      const k = `${b.id}:${x.id}`
+                      return (
+                        <label key={k} className="check-row" data-level={x.level}>
+                          <input type="checkbox" checked={multi.includes(k)} onChange={() => setMulti(multi.includes(k) ? multi.filter((y) => y !== k) : [...multi, k])} />
+                          {x.title}
+                        </label>
+                      )
+                    })}
+                    {!docs[b.id]?.sections.length && <p className="muted">لا فهرس دروس لهذا الكتاب.</p>}
+                  </fieldset>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {kind === 'summary' && <Choice legend="نوع الملخص" value={style} onChange={setStyle} options={Object.entries(SUMMARY_STYLES).map(([k, v]) => [k as SummaryStyle, v.label])} />}
@@ -128,7 +157,7 @@ export default function ToolDialog({ kind, notebook, books, onClose, onDone }: P
           </fieldset>
         )}
         {kind === 'cards' && <Choice legend="نوع البطاقات" value={cardKind} onChange={setCardKind} options={Object.entries(CARD_KINDS).map(([k, v]) => [k as CardKind, v.label])} />}
-        {(kind === 'quiz' || kind === 'cards') && <Choice legend="العدد" value={count} onChange={setCount} options={[['5', num(5)], ['10', num(10)], ['15', num(15)]]} />}
+        {(kind === 'quiz' || kind === 'cards') && <Choice legend="العدد" value={count} onChange={setCount} options={[['5', num(5)], ['10', num(10)], ['15', num(15)], ['20', num(20)]]} />}
         {error && (
           <p className="form-error" role="alert">
             {error}

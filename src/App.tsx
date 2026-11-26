@@ -3,7 +3,8 @@ import { AppShell } from './components/AppShell'
 import { Toast } from './components/Toast'
 import { Home } from './pages/Home'
 import { usePath } from './router'
-import { resumePending } from './services/books/process'
+import { docsReady, resumePending } from './services/books/process'
+import { toast } from './store/toast'
 import { getState, useStore } from './store/store'
 import { openPage, useViewer } from './store/viewer'
 
@@ -12,9 +13,10 @@ const Workspace = lazy(() => import('./pages/Workspace'))
 const Library = lazy(() => import('./pages/Library'))
 const Review = lazy(() => import('./pages/Review'))
 const Settings = lazy(() => import('./pages/Settings'))
+const Progress = lazy(() => import('./pages/Progress'))
 const PageViewer = lazy(() => import('./components/PageViewer'))
 
-const TITLES: Record<string, string> = { '/notebooks': 'الدفاتر', '/library': 'المكتبة', '/review': 'المراجعة', '/settings': 'الإعدادات' }
+const TITLES: Record<string, string> = { '/notebooks': 'الدفاتر', '/library': 'المكتبة', '/review': 'المراجعة', '/progress': 'التقدم', '/settings': 'الإعدادات' }
 
 function useDisplaySettings() {
   const { theme, textSize } = useStore((s) => s.data.settings)
@@ -42,6 +44,15 @@ export function App() {
 
   const viewer = useViewer()
 
+  // فهارس الدروس المحدّثة للكتب المنزّلة، دون إعادة تنزيلها
+  useEffect(() => {
+    void docsReady
+      .then(() => import('./services/books/library'))
+      .then((l) => l.syncLibrary())
+      .then((n) => n && toast(`حُدّثت فهارس الدروس في ${n} من كتبك.`))
+      .catch(() => {})
+  }, [profileId])
+
   // يكمل معالجة ما انقطع بإغلاق النافذة
   useEffect(() => {
     void resumePending(getState().data.books.map((b) => b.id), profileId)
@@ -65,6 +76,8 @@ export function App() {
     <Library />
   ) : path === '/review' ? (
     <Review />
+  ) : path === '/progress' ? (
+    <Progress />
   ) : path === '/settings' ? (
     <Settings />
   ) : (

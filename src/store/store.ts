@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { Book, Message, Notebook, Profile, QuizAttempt, Settings, StudentData, StudyOutput } from '../types'
+import type { Book, Flashcard, Focus, Message, Mistake, Notebook, Profile, QuizAttempt, Settings, StudentData, Studied, StudyOutput } from '../types'
 import { emptyData, migrateV1 } from '../data/empty'
 import { isOurKey, load, loadOld, save } from '../services/storage/local'
 import { toast } from './toast'
@@ -71,6 +71,10 @@ export function useStore<T>(select: (s: AppState) => T): T {
 }
 export const useData = () => useStore((s) => s.data)
 
+/** معرّف المحادثة الحالية في الدفتر */
+export const chatOf = (n: Notebook) => n.chatId ?? n.id
+const chatTitle = (list: Message[] | undefined) => list?.find((m) => m.role === 'user')?.text.slice(0, 70) ?? 'محادثة'
+
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 
 export type NotebookInput = Pick<Notebook, 'title' | 'subject' | 'hue' | 'bookIds'>
@@ -106,7 +110,8 @@ export const actions = {
   deleteNotebook(id: string) {
     setData((d) => {
       const messages = { ...d.messages }
-      delete messages[id]
+      const nb = d.notebooks.find((n) => n.id === id)
+      for (const c of [id, nb?.chatId, ...(nb?.chats ?? []).map((x) => x.id)]) if (c) delete messages[c]
       const gone = new Set(d.outputs.filter((o) => o.notebookId === id).map((o) => o.id))
       return {
         ...d,
@@ -124,6 +129,9 @@ export const actions = {
   addBook(book: Book) {
     setData((d) => ({ ...d, books: [book, ...d.books] }))
   },
+  setBookSubject(id: string, subject: string) {
+    setData((d) => ({ ...d, books: d.books.map((b) => (b.id === id ? { ...b, subject } : b)) }))
+  },
   renameBook(id: string, title: string) {
     setData((d) => ({ ...d, books: d.books.map((b) => (b.id === id ? { ...b, title } : b)) }))
   },
@@ -138,14 +146,69 @@ export const actions = {
   addMessage(notebookId: string, m: Message) {
     setData((d) => ({ ...d, messages: { ...d.messages, [notebookId]: [...(d.messages[notebookId] ?? []), m] } }))
   },
-  clearMessages(notebookId: string) {
-    setData((d) => ({ ...d, messages: { ...d.messages, [notebookId]: [] } }))
+  updateMessage(chatId: string, id: string, patch: Partial<Message>) {
+    setData((d) => ({ ...d, messages: { ...d.messages, [chatId]: (d.messages[chatId] ?? []).map((m) => (m.id === id ? { ...m, ...patch } : m)) } }))
+  },
+  clearMessages(chatId: string) {
+    setData((d) => ({ ...d, messages: { ...d.messages, [chatId]: [] } }))
+  },
+  /** يحفظ المحادثة الحالية في السجل ويبدأ أخرى فارغة */
+  newChat(notebookId: string) {
+    setData((d) => {
+      const nb = d.notebooks.find((n) => n.id === notebookId)
+      if (!nb) return d
+      const cur = chatOf(nb)
+      if (!d.messages[cur]?.length) return d
+      const chats = [{ id: cur, title: chatTitle(d.messages[cur]), at: d.messages[cur].at(-1)!.createdAt }, ...(nb.chats ?? []).filter((c) => c.id !== cur)]
+      return { ...d, notebooks: d.notebooks.map((n) => (n.id === notebookId ? { ...n, chatId: uid(), chats } : n)) }
+    })
+  },
+  openChat(notebookId: string, chatId: string) {
+    setData((d) => {
+      const nb = d.notebooks.find((n) => n.id === notebookId)
+      if (!nb) return d
+      const cur = chatOf(nb)
+      const keep = d.messages[cur]?.length ? [{ id: cur, title: chatTitle(d.messages[cur]), at: d.messages[cur].at(-1)!.createdAt }] : []
+      const chats = [...keep, ...(nb.chats ?? []).filter((c) => c.id !== chatId && c.id !== cur)]
+      return { ...d, notebooks: d.notebooks.map((n) => (n.id === notebookId ? { ...n, chatId, chats } : n)) }
+    })
+  },
+  deleteChat(notebookId: string, chatId: string) {
+    setData((d) => {
+      const messages = { ...d.messages }
+      delete messages[chatId]
+      return { ...d, messages, notebooks: d.notebooks.map((n) => (n.id === notebookId ? { ...n, chats: (n.chats ?? []).filter((c) => c.id !== chatId) } : n)) }
+    })
+  },
+  setFocus: (id: string, focus: Focus | undefined) => patchNotebook(id, () => ({ focus })),
+  /** يدمج تقدم الطالب في درس */
+  recordStudy(s: Omit<Studied, 'at' | 'key'> & Partial<Pick<Studied, 'key'>>) {
+    const key = s.key ?? `${s.bookId}:${s.from}-${s.to}`
+    setData((d) => {
+      const old = d.studied[key]
+      const checks = s.checks && old?.checks ? { right: old.checks.right + s.checks.right, total: old.checks.total + s.checks.total } : (s.checks ?? old?.checks)
+      return { ...d, studied: { ...d.studied, [key]: { ...old, ...s, key, checks, at: Date.now() } } }
+    })
+  },
+  addMistakes(list: Omit<Mistake, 'id' | 'at'>[]) {
+    if (!list.length) return
+    setData((d) => ({ ...d, mistakes: [...list.map((m) => ({ ...m, id: uid(), at: Date.now() })), ...d.mistakes].slice(0, 500) }))
+  },
+  resolveMistakes(ids: string[]) {
+    setData((d) => ({ ...d, mistakes: d.mistakes.map((m) => (ids.includes(m.id) ? { ...m, resolved: true } : m)) }))
   },
   addOutput(o: StudyOutput) {
     setData((d) => ({ ...d, outputs: [o, ...d.outputs] }))
   },
+  /** الملاحظات والملخصات والمقارنات قابلة للتعديل */
   editNote(id: string, title: string, text: string) {
-    setData((d) => ({ ...d, outputs: d.outputs.map((o) => (o.id === id && o.data.kind === 'note' ? { ...o, title, data: { ...o.data, text } } : o)) }))
+    setData((d) => ({ ...d, outputs: d.outputs.map((o) => (o.id === id && (o.data.kind === 'note' || o.data.kind === 'summary' || o.data.kind === 'compare') ? { ...o, title, data: { ...o.data, text } } : o)) }))
+  },
+  setCards(outputId: string, cards: Flashcard[]) {
+    setData((d) => ({
+      ...d,
+      outputs: d.outputs.map((o) => (o.id === outputId && o.data.kind === 'cards' ? { ...o, data: { ...o.data, cards, known: cards.filter((c) => (c.box ?? 0) >= 3).map((c) => c.id) } } : o)),
+    }))
   },
   deleteOutput(id: string) {
     setData((d) => ({

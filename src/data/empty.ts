@@ -1,8 +1,8 @@
 import type { StudentData } from '../types'
 
 export const emptyData = (): StudentData => ({
-  notebooks: [], books: [], messages: {}, outputs: [], attempts: [],
-  settings: { theme: 'light', textSize: 'normal', digits: 'arab' },
+  notebooks: [], books: [], messages: {}, outputs: [], attempts: [], studied: {}, mistakes: [],
+  settings: { theme: 'light', textSize: 'normal', digits: 'arab', level: 'normal' },
 })
 
 /**
@@ -39,7 +39,10 @@ export function parseBackup(raw: unknown): StudentData | null {
   const set = obj(d.settings) ? d.settings : base.settings
   return {
     notebooks: d.notebooks, books: d.books, messages: d.messages, outputs: d.outputs, attempts: d.attempts,
+    studied: obj(d.studied) ? (d.studied as StudentData['studied']) : {},
+    mistakes: Array.isArray(d.mistakes) ? d.mistakes.filter((m) => obj(m) && s(m.q) && s(m.bookId) && n(m.at)) : [],
     settings: {
+      level: set.level === 'simple' || set.level === 'deep' ? set.level : 'normal',
       theme: ['light', 'dark', 'auto'].includes(set.theme) ? set.theme : 'light',
       textSize: set.textSize === 'large' ? 'large' : 'normal',
       digits: set.digits === 'latn' ? 'latn' : 'arab',
@@ -50,7 +53,7 @@ function validOutput(d: Record<string, unknown>) {
   const text = (v: unknown) => typeof v === 'string'
   const cited = (v: unknown) => !!v && typeof v === 'object' && text((v as { bookId?: unknown }).bookId)
   if (d.kind === 'quiz') return Array.isArray(d.questions) && d.questions.every((q) => text(q?.q) && text(q?.answer) && cited(q?.cite))
-  if (d.kind === 'cards') return Array.isArray(d.cards) && Array.isArray(d.known) && d.cards.every((c) => text(c?.front) && text(c?.back) && cited(c?.cite))
+  if (d.kind === 'cards') return Array.isArray(d.cards) && Array.isArray(d.known) && d.cards.every((c) => text(c?.front) && text(c?.back) && (c?.cite === undefined || cited(c.cite)))
   if (d.kind === 'mindmap') return text((d.root as { label?: unknown } | null)?.label)
   return ['summary', 'compare', 'note'].includes(d.kind as string) && text(d.text) && Array.isArray(d.citations)
 }
