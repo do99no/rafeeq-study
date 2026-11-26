@@ -144,11 +144,13 @@ export function judgeOcr(raw: OcrLine[]): { lines: Line[]; ok: boolean; weak: nu
   const formula = (t: string) => /[0-9٠-٩=+×÷√^()<>]/.test(t) && words(t) < 3 && t.length < 60
   // أسطر الرأس والذيل تبقى: فيها أرقام الصفحات المطبوعة
   const edge = (i: number) => i < 2 || i >= all.length - 2
-  const good = all.filter((l, i) => l.c >= MIN_LINE && /[\p{L}\p{N}]/u.test(l.t) && (edge(i) || !formula(l.t)))
+  // النص المشكول يأخذ ثقة منخفضة وهو مقروء: يبقى السطر إن كان فيه أربع كلمات حقيقية على الأقل
+  const good = all.filter((l, i) => /[\p{L}\p{N}]/u.test(l.t) && (edge(i) || !formula(l.t)) && (l.c >= MIN_LINE || words(l.t) >= 4))
   const hs = good.map((l) => l.h).sort((a, b) => a - b)
   const mid = hs[hs.length >> 1] || 1
-  const size = good.reduce((s, l) => s + l.t.length, 0)
-  const conf = size ? good.reduce((s, l) => s + l.c * l.t.length, 0) / size : 0
+  const sure = good.filter((l) => l.c >= MIN_LINE)
+  const size = sure.reduce((s, l) => s + l.t.length, 0)
+  const conf = size ? sure.reduce((s, l) => s + l.c * l.t.length, 0) / size : 0
   const lines = good.map((l) => ({ t: l.t, h: l.h > mid * 1.6 ? 16 : 10, gap: l.gap }))
   const lost = all.filter((l) => !good.includes(l) && /[\p{L}\p{N}=+×÷√]{2,}/u.test(l.t) && (formula(l.t) || words(l.t) < 3)).length
   return { lines, ok: conf >= MIN_PAGE && textQuality(lines.map((l) => l.t).join('\n')) === 'ok', weak: lost >= 2 ? lost : 0 }
