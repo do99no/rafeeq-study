@@ -1,0 +1,211 @@
+import type { Flashcard, MindNode, OutputData, QuestionType, QuizQuestion } from '../../types'
+import { normalize, overlap } from '../../lib/arabic'
+import { chat } from '../ai/manager'
+import { scopeChunks, search } from '../rag/search'
+import type { Hit, Scope } from '../rag/types'
+import { cleanCites, passagesText, RULES, toCitation } from './assistant'
+
+/** خطأ برسالة تُعرض للطالب كما هي */
+export class StudyError extends Error {}
+
+export type SummaryStyle = 'full' | 'short' | 'final' | 'defs' | 'laws' | 'points'
+export const SUMMARY_STYLES: Record<SummaryStyle, { label: string; ask: string }> = {
+  full: { label: 'شامل', ask: 'اكتب ملخصاً شاملاً منظماً بعناوين ونقاط يغطي كل الأفكار.' },
+  short: { label: 'مختصر', ask: 'اكتب ملخصاً مختصراً لأهم الأفكار في نقاط قليلة.' },
+  final: { label: 'مراجعة نهائية', ask: 'اكتب ملخص ليلة الامتحان: ما يجب تذكره، والقوانين، وما يكثر الخلط فيه إن ورد في النص.' },
+  defs: { label: 'التعريفات', ask: 'استخرج التعريفات والمصطلحات الواردة فقط، كل تعريف في نقطة.' },
+  laws: { label: 'القوانين', ask: 'استخرج القوانين والمعادلات والقواعد الواردة فقط، مع معنى رموزها كما وردت.' },
+  points: { label: 'نقاط الحفظ', ask: 'استخرج أهم ما يجب حفظه من حقائق وتواريخ وأسماء وأرقام واردة.' },
+}
+export const QUESTION_TYPES: Record<QuestionType, string> = {
+  mcq: 'اختيار من متعدد', tf: 'صح وخطأ', fill: 'أكمل الفراغ', short: 'أسئلة قصيرة', essay: 'أسئلة مقالية', problem: 'مسائل',
+}
+export type CardKind = 'all' | 'terms' | 'laws' | 'facts'
+export const CARD_KINDS: Record<CardKind, { label: string; ask: string }> = {
+  all: { label: 'متنوعة', ask: 'مصطلحات وتعريفات وقوانين ومفاهيم ومعلومات للحفظ' },
+  terms: { label: 'مصطلحات وتعريفات', ask: 'مصطلحات وتعريفات فقط' },
+  laws: { label: 'قوانين', ask: 'قوانين ومعادلات وقواعد فقط' },
+  facts: { label: 'تواريخ ومعلومات', ask: 'تواريخ وأسماء وحقائق تحتاج إلى حفظ فقط' },
+}
+
+const BATCH = 14_000
+const MAX_BATCHES = 8
+
+async function complete(user: string, signal: AbortSignal, maxTokens = 6000, json = false): Promise<string> {
+  let text = ''
+  const system = json ? `${RULES}\n8. في هذه المهمة أخرج JSON صالحاً فقط، دون أي نص قبله أو بعده.` : RULES
+  for await (const ev of chat([{ role: 'system', content: system }, { role: 'user', content: user }], { maxTokens, signal })) {
+    if (ev.type === 'reset') text = ''
+    else if (ev.type === 'text') text += ev.text
+  }
+  return text
+}
+
+function parseJson(raw: string): unknown {
+  const s = raw.search(/[[{]/)
+  const e = Math.max(raw.lastIndexOf('}'), raw.lastIndexOf(']'))
+  if (s < 0 || e <= s) return null
+  try {
+    return JSON.parse(raw.slice(s, e + 1))
+  } catch {
+    return null
+  }
+}
+
+/** توزيع متساوٍ على النطاق كله بدلاً من بدايته فقط */
+function sample(hits: Hit[], budget = BATCH): Hit[] {
+  const good = hits.filter((h) => h.text.length > 100)
+  const pool = good.length ? good : hits
+  const total = pool.reduce((s, h) => s + h.text.length, 0)
+  if (total <= budget) return pool
+  const n = Math.max(1, Math.floor((pool.length * budget) / total))
+  return Array.from({ length: n }, (_, i) => pool[Math.floor((i * pool.length) / n)])
+}
+
+async function need(scope: Scope): Promise<Hit[]> {
+  const hits = await scopeChunks(scope)
+  if (!hits.length) throw new StudyError('لا يوجد نص مفهرس في هذا النطاق.')
+  return hits
+}
+
+export async function makeSummary(scope: Scope, style: SummaryStyle, signal: AbortSignal, onProgress?: (d: number, t: number) => void): Promise<OutputData> {
+  const hits = await need(scope)
+  const batches: Hit[][] = [[]]
+  let size = 0
+  for (const h of hits) {
+    if (size && size + h.text.length > BATCH) {
+      batches.push([])
+      size = 0
+    }
+    batches.at(-1)!.push(h)
+    size += h.text.length
+  }
+  if (batches.length > MAX_BATCHES) throw new StudyError('هذا النطاق أكبر من أن يُلخَّص بدقة مرة واحدة. اختر درساً أو صفحات أقل.')
+  let start = 1
+  const parts: string[] = []
+  for (const [k, b] of batches.entries()) {
+    onProgress?.(k + 1, batches.length)
+    const part = batches.length > 1 ? `\nهذا الجزء ${k + 1} من ${batches.length}. لخص هذا الجزء وحده دون مقدمة أو خاتمة.` : ''
+    const raw = await complete(`المقاطع:\n\n${passagesText(b, start)}\n\n---\n${SUMMARY_STYLES[style].ask} اذكر رقم المقطع بعد كل نقطة. إذا لم يرد شيء من المطلوب فاكتب ذلك. لا تضف توضيحاً من خارج المقاطع.${part}`, signal)
+    const { text, used } = cleanCites(raw.trim(), start + b.length - 1)
+    // استشهاد برقم من دفعة أخرى غير صالح
+    if (used.some((n) => n >= start)) parts.push(text.replace(/\[(\d+)\]/g, (m, n) => (Number(n) >= start ? m : '')))
+    else if (batches.length === 1) throw new StudyError('لم يقدّم المزود ملخصاً موثقاً بالمصادر. حاول مرة أخرى.')
+    else parts.push('لم يتوفر ملخص موثق لهذا الجزء.')
+    start += b.length
+  }
+  const text = parts.join('\n\n')
+  const { used } = cleanCites(text, hits.length)
+  if (!used.length) throw new StudyError('لم يقدّم المزود ملخصاً موثقاً بالمصادر. حاول مرة أخرى.')
+  return { kind: 'summary', text, citations: used.map((n) => toCitation(hits[n - 1], n)) }
+}
+
+const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
+/** البند يُقبل فقط إذا وُجد مقتطفه فعلاً في المقطع الذي نسبه إليه */
+function grounded(item: Record<string, unknown>, hits: Hit[]) {
+  const n = Number(item.n)
+  const h = Number.isInteger(n) ? hits[n - 1] : undefined
+  const quote = str(item.quote)
+  if (!h || quote.length < 8) return null
+  if (!normalize(h.text).includes(normalize(quote)) && overlap(quote, h.text) < 0.8) return null
+  return { ...toCitation(h, 1), quote }
+}
+
+async function items<T>(ask: string, hits: Hit[], map: (o: Record<string, unknown>) => T | null, signal: AbortSignal): Promise<T[]> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const j = parseJson(await complete(`المقاطع:\n\n${passagesText(hits)}\n\n---\n${ask}`, signal, 7000, true))
+    const list = Array.isArray(j) ? j : j && typeof j === 'object' ? Object.values(j).find(Array.isArray) : null
+    const out = (list ?? []).flatMap((o: unknown) => (o && typeof o === 'object' ? (map(o as Record<string, unknown>) ?? []) : [])) as T[]
+    if (out.length) return out
+  }
+  throw new StudyError('لم ينتج المزود بنوداً يمكن التحقق منها في الكتاب. حاول مرة أخرى أو غيّر النطاق.')
+}
+
+const COMMON = 'لكل عنصر: "n" رقم المقطع، و"quote" جملة قصيرة منسوخة حرفياً من المقطع نفسه تثبت الإجابة.'
+
+export async function makeQuiz(scope: Scope, types: QuestionType[], count: number, signal: AbortSignal): Promise<OutputData> {
+  const hits = sample(await need(scope))
+  const shapes: Record<QuestionType, string> = {
+    mcq: '{"type":"mcq","q":"","options":["","","",""],"answer":"نص الخيار الصحيح حرفياً","why":"","n":1,"quote":""}',
+    tf: '{"type":"tf","q":"عبارة","answer":"صح أو خطأ","why":"","n":1,"quote":""}',
+    fill: '{"type":"fill","q":"جملة فيها ____ واحدة","answer":"الكلمة الناقصة","why":"","n":1,"quote":""}',
+    short: '{"type":"short","q":"","answer":"","why":"","n":1,"quote":""}',
+    essay: '{"type":"essay","q":"","answer":"إجابة نموذجية","why":"عناصر الإجابة","n":1,"quote":""}',
+    problem: '{"type":"problem","q":"مسألة تطبق قانوناً وارداً في المقطع","answer":"خطوات الحل والناتج","why":"القانون المستخدم","n":1,"quote":"نص القانون من المقطع"}',
+  }
+  const ask = `اكتب ${count} سؤالاً موزعة على المقاطع، من الأنواع التالية فقط:\n${types.map((t) => shapes[t]).join('\n')}\n${COMMON} كل إجابة يجب أن تكون واردة في المقطع${types.includes('problem') ? '، ولا تكتب مسألة إلا إذا ورد قانونها في مقطع' : ''}. أخرج {"items":[...]}`
+  const questions = await items<QuizQuestion>(ask, hits, (o) => {
+    const type = o.type as QuestionType
+    const q = str(o.q)
+    let answer = str(o.answer)
+    const cite = grounded(o, hits)
+    if (!types.includes(type) || !q || !answer || !cite) return null
+    let options: string[] | undefined
+    if (type === 'mcq') {
+      options = Array.isArray(o.options) ? [...new Set(o.options.map(str))].filter(Boolean) : []
+      const hit = options.find((x) => normalize(x) === normalize(answer))
+      if (options.length < 3 || !hit) return null
+      answer = hit
+      // ترتيب عشوائي: النماذج تميل إلى وضع الصحيح أولاً
+      options = options.map((v) => ({ v, r: Math.random() })).sort((a, b) => a.r - b.r).map((x) => x.v)
+    }
+    if (type === 'tf') {
+      if (!['صح', 'خطا'].includes(normalize(answer))) return null
+      answer = normalize(answer) === 'صح' ? 'صح' : 'خطأ'
+      options = ['صح', 'خطأ']
+    }
+    if (type === 'fill' && (!/_{2,}|…|\.{3,}/.test(q) || overlap(answer, `${cite.quote}\n${hits[Number(o.n) - 1].text}`) < 1)) return null
+    return { type, q, options, answer, why: str(o.why), cite }
+  }, signal)
+  return { kind: 'quiz', questions: questions.slice(0, count) }
+}
+
+export async function makeCards(scope: Scope, kind: CardKind, count: number, signal: AbortSignal): Promise<OutputData> {
+  const hits = sample(await need(scope))
+  const ask = `اكتب ${count} بطاقة مراجعة من نوع: ${CARD_KINDS[kind].ask}. الشكل {"items":[{"front":"سؤال أو مصطلح","back":"إجابة قصيرة من المقطع","n":1,"quote":""}]}\n${COMMON}`
+  const cards = await items<Flashcard>(ask, hits, (o) => {
+    const cite = grounded(o, hits)
+    const front = str(o.front)
+    const back = str(o.back)
+    return cite && front && back ? { id: '', front, back, cite } : null
+  }, signal)
+  return { kind: 'cards', known: [], cards: cards.slice(0, count).map((c, i) => ({ ...c, id: String(i + 1) })) }
+}
+
+export async function makeMindmap(scope: Scope, title: string, signal: AbortSignal): Promise<OutputData> {
+  const hits = sample(await need(scope))
+  const ask = `ابنِ خريطة ذهنية للمقاطع: فروع رئيسية ثم فروع فرعية ثم تفاصيل قصيرة. الشكل {"children":[{"label":"","children":[{"label":"","n":1,"children":[{"label":"","n":1}]}]}]}. "n" رقم المقطع الذي ورد فيه العنصر. لا تضف ما ليس في المقاطع.`
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const j = parseJson(await complete(`المقاطع:\n\n${passagesText(hits)}\n\n---\n${ask}`, signal, 6000, true)) as { children?: unknown } | null
+    const walk = (v: unknown, depth: number): MindNode[] =>
+      !Array.isArray(v) || depth > 4
+        ? []
+        : v.flatMap((o) => {
+            const label = str(o?.label)
+            const h = hits[Number(o?.n) - 1]
+            const children = walk(o?.children, depth + 1)
+            // الورقة بلا مصدر حقيقي تُحذف
+            if (!label || (!children.length && (!h || overlap(label, h.text) < 0.5))) return []
+            return [{ label, ...(h ? { cite: toCitation(h, 1) } : {}), ...(children.length ? { children } : {}) }]
+          })
+    const children = walk(j?.children, 1)
+    if (children.length) return { kind: 'mindmap', root: { label: title, children } }
+  }
+  throw new StudyError('لم ينتج المزود خريطة يمكن التحقق منها في الكتاب. حاول مرة أخرى أو غيّر النطاق.')
+}
+
+export interface Side {
+  topic: string
+  scope: Scope
+}
+export async function makeCompare(a: Side, b: Side, signal: AbortSignal): Promise<OutputData> {
+  const get = async (s: Side) => (s.topic ? (await search(s.topic, s.scope, signal, 6)).hits : sample(await need(s.scope), 7000))
+  const [ha, hb] = [await get(a), await get(b)]
+  if (!ha.length || !hb.length) throw new StudyError(`لم أجد في المصادر ما يكفي عن «${(!ha.length ? a : b).topic}».`)
+  const hits = [...new Map([...ha, ...hb].map((h) => [`${h.bookId}#${h.i}`, h])).values()]
+  const name = (s: Side, i: string) => s.topic || i
+  const raw = await complete(`المقاطع:\n\n${passagesText(hits)}\n\n---\nقارن بين «${name(a, `الموضوع الأول (المقاطع 1 إلى ${ha.length})`)}» و«${name(b, `الموضوع الثاني (المقاطع من ${ha.length + 1})`)}». اكتب **أوجه التشابه** ثم **أوجه الاختلاف** في نقاط، ورقم المقطع بعد كل نقطة. لا تضف ما ليس في المقاطع.`, signal)
+  const { text, used } = cleanCites(raw.trim(), hits.length)
+  if (!used.length) throw new StudyError('لم يقدّم المزود مقارنة موثقة بالمصادر. حاول مرة أخرى.')
+  return { kind: 'compare', text, citations: used.map((n) => toCitation(hits[n - 1], n)) }
+}

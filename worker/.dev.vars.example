@@ -1,0 +1,18 @@
+# انسخ هذا الملف إلى worker/.dev.vars واملأ ما لديك. لا ترفع .dev.vars إلى Git.
+# رمز يكتبه الطالبان مرة واحدة في الإعدادات. اختر رمزاً طويلاً.
+ACCESS_CODE=
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:4173
+
+GEMINI_API_KEY=
+GROQ_API_KEY=
+OPENROUTER_API_KEY=
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_AI_TOKEN=
+COHERE_API_KEY=
+SAMBANOVA_API_KEY=
+NVIDIA_API_KEY=
+# وثائق Mistral متعارضة بشأن المجانية. لا يعمل إلا بعد تأكدك: MISTRAL_CONFIRMED_FREE=true
+MISTRAL_API_KEY=
+MISTRAL_CONFIRMED_FREE=
+
+# لتغيير نموذج: GEMINI_MODEL=... أو GEMINI_EMBED_MODEL=...
