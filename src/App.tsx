@@ -5,6 +5,7 @@ import { Home } from './pages/Home'
 import { usePath } from './router'
 import { docsReady, resumePending } from './services/books/process'
 import { toast } from './store/toast'
+import { num } from './lib/format'
 import { getState, useStore } from './store/store'
 import { openPage, useViewer } from './store/viewer'
 
@@ -49,7 +50,7 @@ export function App() {
     void docsReady
       .then(() => import('./services/books/library'))
       .then((l) => l.syncLibrary())
-      .then((n) => n && toast(`حُدّثت فهارس الدروس في ${n} من كتبك.`))
+      .then((n) => n && toast(`حُدّثت فهارس الدروس في ${num(n)} من كتبك.`))
       .catch(() => {})
   }, [profileId])
 

@@ -9,7 +9,7 @@
 .focus-change { color: var(--brand-ink); font-size: 0.8125rem; font-weight: 500; }
 .segmented.level button { min-height: 38px; padding: 0 0.7rem; font-size: 0.8125rem; }
 .level-select { display: none; min-height: 48px; padding: 0 0.6rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font-size: 0.85rem; }
-@media (max-width: 640px) { .segmented.level { display: none; } .level-select { display: block; flex: none; } .study-bar { flex-wrap: nowrap; padding-block: 0.45rem; } .focus-btn { flex: 1 1 auto; } }
+@media (max-width: 640px) { .segmented.level { display: none; } .level-select { display: block; flex: none; } .study-bar { flex-wrap: nowrap; padding-block: 0.45rem; } .study-bar .focus-btn { flex: 1 1 0; } }
 
 .part-tag { font-size: 0.8125rem; color: var(--brand-ink); background: var(--brand-soft); border-radius: 99px; padding: 0.05rem 0.7rem; margin-bottom: 0.4rem; display: inline-block; }
 .verdict { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600; margin-bottom: 0.3rem; }
