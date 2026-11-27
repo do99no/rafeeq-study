@@ -61,9 +61,16 @@ async function secretOf(row, env) {
   return row.enc ? open(row.enc, row.id, env) : null
 }
 
-export async function approvedProviders(DB) {
+/**
+ * المزودون المعتمدون: من لوحة المسؤول، أو من سطر واحد في أسرار الخادم APPROVED_PROVIDERS=gemini,openrouter
+ * يكتبه صاحب المشروع بعد قبول شروطها. في الحالتين: المتحقق من مجانيته فقط (المحظور وغير المتحقق لا يُعتمد أبداً).
+ */
+export async function approvedProviders(DB, env = {}) {
   const rows = await all(DB, 'SELECT id, approved FROM ai_providers')
-  return Object.keys(PROVIDERS).filter((id) => PROVIDERS[id].free?.status === 'verified' && rows.some((r) => r.id === id && r.approved))
+  const fromEnv = String(env.APPROVED_PROVIDERS ?? '').split(',').map((s) => s.trim().toLowerCase())
+  // إيقاف المزود من اللوحة يغلب سطر الأسرار
+  const off = (id) => rows.some((r) => r.id === id && !r.approved)
+  return Object.keys(PROVIDERS).filter((id) => PROVIDERS[id].free?.status === 'verified' && (rows.some((r) => r.id === id && r.approved) || (fromEnv.includes(id) && !off(id))))
 }
 
 /** حالة حصة مشروع: متاح، قريب من الحد، مستنفد، غير معروف */
@@ -113,7 +120,8 @@ async function onError(DB, k, e, model, user) {
   const now = Date.now()
   await run(DB, 'INSERT INTO ai_errors (at, key_id, provider, project, model, code, status, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', now, k.id, k.provider, k.project, model, code, e.body?.upstream ?? null, user)
   await run(DB, 'DELETE FROM ai_errors WHERE id <= (SELECT MAX(id) - 1000 FROM ai_errors)')
-  await run(DB, 'UPDATE ai_keys SET last_error = ?, last_error_at = ?, status = ? WHERE id = ?', code, now, code === 'auth' ? 'auth' : code === 'quota' || code === 'rate' ? code : 'error', k.id)
+  // الازدحام والتأخر من المزود لا من المفتاح: لا تتغير حالة المفتاح
+  await run(DB, "UPDATE ai_keys SET last_error = ?, last_error_at = ?, status = CASE WHEN ? IN ('auth', 'quota', 'rate', 'bad_request') THEN ? ELSE status END WHERE id = ?", code, now, code, code === 'bad_request' ? 'error' : code, k.id)
   const cool = (until, reason) => run(DB, 'INSERT INTO ai_quota (provider, project, cool_until, reason) VALUES (?, ?, ?, ?) ON CONFLICT(provider, project) DO UPDATE SET cool_until = excluded.cool_until, reason = excluded.reason', k.provider, k.project, until, reason)
   // الحصة وحد الدقيقة يخصان المشروع كله: لا تبديل داخل المزود
   if (code === 'quota') await cool(Math.max(nextReset(k.provider), now + 60_000), 'quota')
@@ -152,6 +160,13 @@ const baseOf = (provider, k, env) => {
   return { base: (override || p.base).replace('{account}', account ?? ''), rerankUrl: override ? `${override}/rerank` : p.rerankUrl }
 }
 
+/** نماذج مزدحمة مؤقتاً (في هذه النسخة من الخادم) */
+const busy = new Map()
+/** النماذج المجانية المسموح بها بالترتيب: الرئيسية ثم الأخف، وما يقرأ الصور فقط عند الحاجة */
+function modelsFor(provider, needVision) {
+  const p = PROVIDERS[provider]
+  return (p.models ?? []).filter((m) => (!needVision || m.vision) && (!p.freeOnly || p.freeOnly.test(m.id))).sort((x, y) => (x.tier === 'main' ? 0 : 1) - (y.tier === 'main' ? 0 : 1))
+}
 /** النموذج المجاني المناسب: يقرأ الصور إن لزم، وإلا الرئيسي */
 function modelFor(provider, needVision) {
   const list = PROVIDERS[provider].models ?? []
@@ -169,7 +184,7 @@ function modelFor(provider, needVision) {
 export async function poolChat(b, env, ctx, user, signal, buildBody) {
   const DB = await db(env)
   await syncEnvKeys(DB, env)
-  const approved = await approvedProviders(DB)
+  const approved = await approvedProviders(DB, env)
   const hasImages = b.messages.some((m) => m.images?.length)
   // من يقرأ الصور أولاً عند وجودها
   const order = hasImages ? [...approved.filter((id) => modelFor(id, true)), ...approved.filter((id) => !modelFor(id, true))] : approved
@@ -179,11 +194,13 @@ export async function poolChat(b, env, ctx, user, signal, buildBody) {
   let soonest = 0
   for (const provider of order) {
     const vision = hasImages && !!modelFor(provider, true)
-    const model = modelFor(provider, vision)
-    if (!model) continue
+    // النماذج المجانية للمزود بالترتيب (الرئيسي أولاً)؛ المزدحم مؤقتاً يُتخطى دقيقة
+    const models = modelsFor(provider, vision).filter((m) => (busy.get(`${provider}/${m.id}`) ?? 0) < Date.now())
+    if (!models.length) continue
+    let mi = 0
     const tried = []
-    let sameTries = 0
-    while (attempts < MAX_ATTEMPTS) {
+    while (attempts < MAX_ATTEMPTS && mi < models.length) {
+      const model = models[mi]
       const pick = await pickKey(DB, provider, tried)
       if (!pick.key) {
         if (pick.until) soonest = soonest ? Math.min(soonest, pick.until) : pick.until
@@ -201,14 +218,21 @@ export async function poolChat(b, env, ctx, user, signal, buildBody) {
         await run(DB, "UPDATE ai_keys SET status = 'ok', last_ok = ? WHERE id = ?", Date.now(), k.id)
         const done = (tin, tout) => logUsage(DB, k, model.id, user, 'chat', true, tin, tout)
         // تسجيل الرموز بعد انتهاء البث دون تأخير الطالب
-        return { provider, model: model.id, vision, stream: meterStream(res.body, (a, c) => { const p = done(a, c); ctx?.waitUntil?.(p); return p }) }
+        return { provider, model: model.id, vision, stream: meterStream(res.body, (x, y) => { const p = done(x, y); ctx?.waitUntil?.(p); return p }) }
       } catch (e) {
         if (signal?.aborted) throw e
         await logUsage(DB, k, model.id, user, 'chat', false)
         const r = await onError(DB, k, e, model.id, user)
         if (r.stop) throw e
-        // مفتاح آخر من المزود نفسه: لمفتاح معطوب، أو مرة واحدة لخطأ مؤقت
-        if (r.sameProvider && (r.code === 'auth' || sameTries++ < 1)) continue
+        // مفتاح معطوب: مفتاح آخر بالنموذج نفسه
+        if (r.code === 'auth') continue
+        // ازدحام أو تأخر أو نموذج غير متاح: النموذج المجاني التالي للمزود نفسه (ليس التفافاً على حصة)
+        if (r.code === 'server' || r.code === 'timeout' || r.code === 'model' || r.code === 'network') {
+          busy.set(`${provider}/${model.id}`, Date.now() + 60_000)
+          mi++
+          continue
+        }
+        // الحصة أو حد الدقيقة: مزود آخر
         break
       }
     }
@@ -221,7 +245,7 @@ export async function poolChat(b, env, ctx, user, signal, buildBody) {
 export async function poolEmbed(b, env, user, signal) {
   const DB = await db(env)
   await syncEnvKeys(DB, env)
-  const provider = (await approvedProviders(DB)).find((id) => PROVIDERS[id].embedModels?.length)
+  const provider = (await approvedProviders(DB, env)).find((id) => PROVIDERS[id].embedModels?.length)
   if (!provider) throw new HttpError(400, 'not_configured')
   const p = PROVIDERS[provider]
   const model = p.embedModels[0]
@@ -255,7 +279,7 @@ export async function poolInfo(env) {
   const DB = await db(env)
   if (!DB) return null
   await syncEnvKeys(DB, env)
-  const ids = await approvedProviders(DB)
+  const ids = await approvedProviders(DB, env)
   const embedProvider = ids.find((id) => PROVIDERS[id].embedModels?.length)
   return {
     active: ids.length > 0,
@@ -268,7 +292,7 @@ export async function poolInfo(env) {
 export async function testKey(DB, env, id) {
   const k = await one(DB, 'SELECT * FROM ai_keys WHERE id = ?', id)
   if (!k) throw new HttpError(404, 'not_found')
-  if (!(await approvedProviders(DB)).includes(k.provider)) throw new HttpError(400, 'not_approved')
+  if (!(await approvedProviders(DB, env)).includes(k.provider)) throw new HttpError(400, 'not_approved')
   const model = modelFor(k.provider, false)
   if (!model) throw new HttpError(400, 'no_free_model')
   const t = Date.now()

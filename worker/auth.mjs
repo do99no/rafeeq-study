@@ -35,7 +35,10 @@ const pepperOf = (env) => {
 }
 export async function hashPassword(password, env) {
   const salt = b64(crypto.getRandomValues(new Uint8Array(16)))
-  return { salt, iters: ITERS, hash: await derive(password, salt, ITERS, pepperOf(env)) }
+  // يمكن خفضه بسر PBKDF2_ITERATIONS إن تجاوز الدخول حد المعالج في خطة Cloudflare المجانية (10000 على الأقل).
+  // كل كلمة مرور تحفظ عدد تكراراتها، فلا تبطل الكلمات القديمة عند تغييره.
+  const iters = Math.max(10_000, Math.min(Number(env.PBKDF2_ITERATIONS) || ITERS, ITERS))
+  return { salt, iters, hash: await derive(password, salt, iters, pepperOf(env)) }
 }
 const validPassword = (p) => typeof p === 'string' && [...p].length >= 8 && p.length <= 128
 

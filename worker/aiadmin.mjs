@@ -30,7 +30,7 @@ export async function overview(request, env) {
   const DB = await admin(request, env)
   const keys = await all(DB, 'SELECT * FROM ai_keys ORDER BY provider, project, created')
   const approvals = await all(DB, 'SELECT * FROM ai_providers')
-  const approved = await approvedProviders(DB)
+  const approved = await approvedProviders(DB, env)
   const since = (d) => utcDay(Date.now() - d * DAY)
   const usage = await all(DB, 'SELECT * FROM ai_usage WHERE day >= ?', since(30))
   const sum = (rows) => rows.reduce((a, r) => ({ requests: a.requests + r.requests, ok: a.ok + r.ok, errors: a.errors + r.errors, tokensIn: a.tokensIn + r.tokens_in, tokensOut: a.tokensOut + r.tokens_out }), { requests: 0, ok: 0, errors: 0, tokensIn: 0, tokensOut: 0 })

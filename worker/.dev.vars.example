@@ -14,7 +14,7 @@ NVIDIA_API_KEY=
 # وثائق Mistral متعارضة بشأن المجانية. لا يعمل إلا بعد تأكدك: MISTRAL_CONFIRMED_FREE=true
 MISTRAL_API_KEY=
 MISTRAL_CONFIRMED_FREE=
-
+APPROVED_PROVIDERS=gemini,openrouter
 # لتغيير نموذج: GEMINI_MODEL=... أو GEMINI_EMBED_MODEL=...
 
 # حسابات الطالبين (المرحلة الأولى):
