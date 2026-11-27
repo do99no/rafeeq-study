@@ -12,6 +12,7 @@ import { poolChat, poolEmbed, poolInfo } from './keys.mjs'
 import * as aiadmin from './aiadmin.mjs'
 export { classify } from './upstream.mjs'
 import * as track from './track.mjs'
+import * as lessons from './lessons.mjs'
 
 // صور الصفحات تكبر الطلب: حتى 4 صور JPEG
 const MAX_BODY = 6_000_000
@@ -59,10 +60,11 @@ async function chat(b, env, signal, ctx) {
 /** المجموعة المشتركة: المزود والمفتاح يختارهما الخادم وفق الاعتماد والحصة */
 async function pooledChat(b, env, signal, ctx) {
   const ok = Array.isArray(b.messages) && b.messages.length > 0 && b.messages.length <= 40 && b.messages.every((m) => ['system', 'user', 'assistant'].includes(m?.role) && isText(m.content, 120_000) && Array.isArray(imgs(m)) && imgs(m).every((u) => typeof u === 'string' && u.length <= 1_500_000 && IMAGE.test(u)))
-  if (!ok || b.messages.reduce((n, m) => n + imgs(m).length, 0) > MAX_IMAGES) throw new HttpError(400, 'bad_request')
+  // تجهيز الدروس (المسؤول) يقرأ صفحات الدرس كلها تقريباً
+  if (!ok || b.messages.reduce((n, m) => n + imgs(m).length, 0) > (ctx.role === 'admin' ? 8 : MAX_IMAGES)) throw new HttpError(400, 'bad_request')
   const r = await poolChat(b, env, ctx, ctx.who, signal, (model, vision, extra) => ({
     // نماذج Gemini الحديثة «تفكّر» قبل الرد ويُحتسب تفكيرها من الحد: 1500 على الأقل كي لا يُبتر الرد
-    model, stream: true, temperature: 0.2, max_tokens: Math.min(Math.max(Number(b.maxTokens) || 4000, 1500), 16000), ...(extra ?? {}),
+    model, stream: true, temperature: 0.2, max_tokens: Math.min(Math.max(Number(b.maxTokens) || 4000, 1500), ctx.role === 'admin' ? 32000 : 16000), ...(extra ?? {}),
     // المزود الذي لا يقرأ الصور يتلقى النص وحده
     messages: vision ? wire(b.messages) : b.messages.map((m) => ({ role: m.role, content: m.content })),
   }))
@@ -145,6 +147,12 @@ async function accounts(request, env, url) {
   if (m === 'POST' && p === '/track/end') return J(await track.end(request, env, await jsonBody(request)))
   if (m === 'POST' && p === '/track/events') return J(await track.events(request, env, await jsonBody(request, 200_000)))
   if (m === 'GET' && p === '/plan') return J(await track.ownPlan(request, env))
+  if (m === 'GET' && p === '/lessons') return J(await lessons.index(request, env))
+  const lb = p.match(/^\/lessons\/([^/]+)$/)
+  if (lb && m === 'GET') return J(await lessons.ofBook(request, env, decodeURIComponent(lb[1])))
+  const ls = p.match(/^\/admin\/lessons\/([^/]+)\/([^/]+)$/)
+  if (ls && m === 'PUT') return J(await lessons.put(request, env, decodeURIComponent(ls[1]), decodeURIComponent(ls[2]), await jsonBody(request, lessons.MAX_PACK + 1000)))
+  if (ls && m === 'PATCH') return J(await lessons.patch(request, env, decodeURIComponent(ls[1]), decodeURIComponent(ls[2]), await jsonBody(request)))
   if (m === 'GET' && p === '/admin/overview') return J(await admin.overview(request, env))
   if (m === 'GET' && p === '/admin/events') return J(await admin.timeline(request, env, url))
   if (m === 'POST' && p === '/admin/password') return J(await auth.adminSetPassword(await jsonBody(request), env, request))
@@ -167,7 +175,7 @@ async function accounts(request, env, url) {
 
 async function handle(request, env, ctx) {
   const url = new URL(request.url)
-  if (/^\/(auth|data|track|plan|admin)(\/|$)/.test(url.pathname)) {
+  if (/^\/(auth|data|track|plan|admin|lessons)(\/|$)/.test(url.pathname)) {
     const res = await accounts(request, env, url)
     if (res) return res
     throw new HttpError(404, 'not_found')
@@ -175,7 +183,11 @@ async function handle(request, env, ctx) {
   // الذكاء الاصطناعي: جلسة طالب أو مسؤول، أو رمز الوصول المشترك (للتشغيل دون حسابات)
   // من أرسل الطلب: للإحصاء فقط (المفاتيح مشتركة)
   ctx.who = 'access'
-  if (auth.hasSessionHeader(request)) ctx.who = (await auth.requireUser(request, env)).id
+  if (auth.hasSessionHeader(request)) {
+    const u = await auth.requireUser(request, env)
+    ctx.who = u.id
+    ctx.role = u.role
+  }
   else {
     // بلا رمز وصول يصبح الوسيط مفتوحاً لأي شخص، لذلك يرفض العمل
     if (!env.ACCESS_CODE) throw new HttpError(503, 'worker_setup')

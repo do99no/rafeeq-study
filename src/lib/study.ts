@@ -22,7 +22,7 @@ export function onAsk(l: () => void) {
   return () => void listeners.delete(l)
 }
 
-const HUE_OF: Record<string, Hue> = { الفيزياء: 'indigo', الكيمياء: 'teal', الأحياء: 'olive', الرياضيات: 'violet', 'اللغة العربية': 'clay', 'اللغة الإنجليزية': 'plum', 'التربية الإسلامية': 'olive', 'العلوم الهندسية': 'indigo' }
+export const HUE_OF: Record<string, Hue> = { الفيزياء: 'indigo', الكيمياء: 'teal', الأحياء: 'olive', الرياضيات: 'violet', 'اللغة العربية': 'clay', 'اللغة الإنجليزية': 'plum', 'التربية الإسلامية': 'olive', 'العلوم الهندسية': 'indigo' }
 
 /** دفتر المادة: يُستخدم الموجود، أو يُنشأ دفتر باسم المادة يضم الكتاب */
 export function notebookFor(bookId: string) {
@@ -50,7 +50,7 @@ export function lessonsOf(d?: DocMeta) {
 /** يفتح دفتر الكتاب على الدرس، وينفذ الطلب إن وُجد */
 export function startStudy(bookId: string, focus?: Focus, ask?: Ask & { quote?: string }) {
   const id = notebookFor(bookId)
-  if (focus) actions.setFocus(id, focus)
+  if (focus) actions.openLesson(id, focus)
   if (ask) queueAsk(id, ask)
   go(`/notebooks/${id}`)
   return id

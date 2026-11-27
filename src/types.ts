@@ -14,6 +14,8 @@ export interface Notebook {
   /** المحادثة الحالية؛ القديمة محفوظة في chats. الغياب يعني المحادثة الأولى (معرّفها معرّف الدفتر). */
   chatId?: string
   chats?: ChatInfo[]
+  /** الدرس الذي تخصه المحادثة الحالية */
+  chatLesson?: string
 }
 
 /** نطاق الدراسة: درس من الفهرس أو صفحات PDF محددة */
@@ -28,6 +30,8 @@ export interface ChatInfo {
   id: string
   title: string
   at: number
+  /** الدرس الذي تخصه المحادثة (bookId#sectionId) */
+  lesson?: string
 }
 export type Level = 'simple' | 'normal' | 'deep'
 

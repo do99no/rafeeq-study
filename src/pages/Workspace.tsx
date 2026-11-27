@@ -1,11 +1,12 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react'
-import { BookMarked, History, MessageSquarePlus, NotebookPen, Pencil, Trash2, WandSparkles } from 'lucide-react'
+import { BookMarked, GraduationCap, History, MessageSquarePlus, NotebookPen, Pencil, Trash2, WandSparkles } from 'lucide-react'
 import { Dialog } from '../components/Dialog'
 import { EmptyState } from '../components/EmptyState'
 import { NotebookForm } from '../components/NotebookForm'
 import { ChatPanel } from '../components/workspace/ChatPanel'
-import { AddSourceDialog, SourcesPanel } from '../components/workspace/SourcesPanel'
-import { ToolsPanel } from '../components/workspace/ToolsPanel'
+import { AddSourceDialog } from '../components/workspace/SourcesPanel'
+import { LessonTree } from '../components/workspace/LessonTree'
+import { LessonStudio, packLabel, packOutput } from '../components/workspace/LessonStudio'
 import type { ToolKind } from '../components/workspace/ToolDialog'
 import { ago, num } from '../lib/format'
 import { useAI } from '../services/ai/manager'
@@ -13,6 +14,8 @@ import { isSearchable, useDocs } from '../services/books/process'
 import { buildVectors } from '../services/rag/search'
 import { Link } from '../router'
 import { actions, chatOf, useData } from '../store/store'
+import type { StudyOutput } from '../types'
+import { syncPacks, type LessonPack, type PackTool } from '../services/study/lessonPack'
 
 const OutputDialog = lazy(() => import('../components/outputs/OutputDialog'))
 const ToolDialog = lazy(() => import('../components/workspace/ToolDialog'))
@@ -34,14 +37,18 @@ export default function Workspace({ id }: { id: string }) {
   const ai = useAI()
   const isWide = useWide()
   const [off, setOff] = useState<string[]>([])
-  const [drawer, setDrawer] = useState<'sources' | 'tools' | null>(null)
+  const [tab, setTab] = useState<'lessons' | 'chat' | 'studio'>('chat')
   const [dialog, setDialog] = useState<'add' | 'edit' | 'history' | null>(null)
   const [outputId, setOutputId] = useState<string | null>(null)
+  /** محتوى جاهز يُعرض دون حفظه في بيانات الطالب */
+  const [shown, setShown] = useState<{ output: StudyOutput; prepared: string } | null>(null)
   const [tool, setTool] = useState<ToolKind | null>(null)
 
   const exists = !!notebook
   useEffect(() => {
     if (exists) actions.touchNotebook(id)
+    // محتوى الدروس الجاهز الأحدث من الخادم
+    if (exists) void syncPacks()
   }, [id, exists])
 
   const books = (notebook?.bookIds ?? []).flatMap((b) => data.books.find((x) => x.id === b) ?? [])
@@ -71,23 +78,35 @@ export default function Workspace({ id }: { id: string }) {
   const activeIds = searchable.filter((b) => !off.includes(b))
   const output = data.outputs.find((o) => o.id === outputId)
 
-  const addSource = () => {
-    setDrawer(null)
-    setDialog('add')
+  const addSource = () => setDialog('add')
+  const openPack = (p: LessonPack, t: PackTool) => {
+    const { output, keep } = packOutput(notebook, p, t)
+    if (keep || data.outputs.some((o) => o.id === output.id)) {
+      if (keep) actions.addOutput(output)
+      setOutputId(output.id)
+    } else setShown({ output, prepared: packLabel(p) })
   }
-  const sources = <SourcesPanel notebook={notebook} books={books} off={off} onOff={setOff} onAdd={addSource} />
-  const tools = (
-    <ToolsPanel
+  const sources = (
+    <LessonTree
       notebook={notebook}
+      books={books}
+      off={off}
+      onOff={setOff}
+      onAdd={addSource}
+      onPick={(f) => {
+        actions.openLesson(notebook.id, f)
+        setTab('chat')
+      }}
+    />
+  )
+  const tools = (
+    <LessonStudio
+      notebook={notebook}
+      focus={notebook.focus}
       activeIds={activeIds}
-      onTool={(k) => {
-        setDrawer(null)
-        setTool(k)
-      }}
-      onOpen={(o) => {
-        setDrawer(null)
-        setOutputId(o.id)
-      }}
+      onTool={setTool}
+      onOpen={(o) => setOutputId(o.id)}
+      onPack={openPack}
     />
   )
 
@@ -102,16 +121,6 @@ export default function Workspace({ id }: { id: string }) {
           </div>
         </div>
         <div className="ws-head-actions">
-          {!isWide && (
-            <>
-              <button className="btn btn-sm" onClick={() => setDrawer('sources')}>
-                <BookMarked aria-hidden="true" /> المصادر <span className="count">{num(books.length)}</span>
-              </button>
-              <button className="btn btn-sm" onClick={() => setDrawer('tools')}>
-                <WandSparkles aria-hidden="true" /> الأدوات
-              </button>
-            </>
-          )}
           <button className="icon-btn" onClick={() => setDialog('edit')} aria-label="تعديل الدفتر" title="تعديل الدفتر">
             <Pencil />
           </button>
@@ -124,30 +133,33 @@ export default function Workspace({ id }: { id: string }) {
         </div>
       </header>
 
-      {isWide && (
+      {!isWide && (
+        <div className="ws-tabs segmented" role="tablist" aria-label="أقسام الدفتر">
+          <button role="tab" aria-selected={tab === 'lessons'} onClick={() => setTab('lessons')}>
+            <BookMarked aria-hidden="true" /> الدروس
+          </button>
+          <button role="tab" aria-selected={tab === 'chat'} onClick={() => setTab('chat')}>
+            <GraduationCap aria-hidden="true" /> ادرس مع رفيق
+          </button>
+          <button role="tab" aria-selected={tab === 'studio'} onClick={() => setTab('studio')}>
+            <WandSparkles aria-hidden="true" /> أدوات الدرس
+          </button>
+        </div>
+      )}
+      {(isWide || tab === 'lessons') && (
         <aside className="ws-side" aria-labelledby="src-h">
-          <h2 id="src-h">المصادر</h2>
+          <h2 id="src-h">المصادر والدروس <span className="count">{num(books.length)}</span></h2>
           {sources}
         </aside>
       )}
-      <ChatPanel key={chatOf(notebook)} notebook={notebook} books={books} activeIds={activeIds} onAddSource={addSource} onOpenOutput={(o) => setOutputId(o.id)} />
-      {isWide && (
+      {(isWide || tab === 'chat') && <ChatPanel key={chatOf(notebook)} notebook={notebook} books={books} activeIds={activeIds} onAddSource={addSource} onOpenOutput={(o) => setOutputId(o.id)} onTools={() => setTab('studio')} onPack={openPack} />}
+      {(isWide || tab === 'studio') && (
         <aside className="ws-side" aria-labelledby="tools-h">
-          <h2 id="tools-h">أدوات الدراسة</h2>
+          <h2 id="tools-h">أدوات الدرس</h2>
           {tools}
         </aside>
       )}
 
-      {!isWide && drawer === 'sources' && (
-        <Dialog variant="start" title="المصادر" onClose={() => setDrawer(null)}>
-          {sources}
-        </Dialog>
-      )}
-      {!isWide && drawer === 'tools' && (
-        <Dialog variant="end" title="أدوات الدراسة" onClose={() => setDrawer(null)}>
-          {tools}
-        </Dialog>
-      )}
       {dialog === 'add' && <AddSourceDialog notebook={notebook} onClose={() => setDialog(null)} />}
       {dialog === 'edit' && <NotebookForm notebook={notebook} onClose={() => setDialog(null)} />}
       {dialog === 'history' && (
@@ -194,7 +206,12 @@ export default function Workspace({ id }: { id: string }) {
       )}
       {output && (
         <Suspense fallback={null}>
-          <OutputDialog key={output.id} output={output} onClose={() => setOutputId(null)} />
+          <OutputDialog key={output.id} output={output} onClose={() => setOutputId(null)} prepared={output.id.startsWith('pk-') ? 'من المحتوى الجاهز للدرس. تقدمك فيه محفوظ لك.' : undefined} />
+        </Suspense>
+      )}
+      {shown && (
+        <Suspense fallback={null}>
+          <OutputDialog key={shown.output.id} output={shown.output} prepared={shown.prepared} onClose={() => setShown(null)} />
         </Suspense>
       )}
     </div>

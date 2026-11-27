@@ -80,6 +80,8 @@ export const useData = () => useStore((s) => s.data)
 /** معرّف المحادثة الحالية في الدفتر */
 export const chatOf = (n: Notebook) => n.chatId ?? n.id
 const chatTitle = (list: Message[] | undefined) => list?.find((m) => m.role === 'user')?.text.slice(0, 70) ?? 'محادثة'
+/** مفتاح الدرس لربط محادثته به */
+export const lessonKey = (f: Focus) => `${f.bookId}#${f.sectionId ?? `${f.from}-${f.to}`}`
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 
@@ -216,6 +218,26 @@ export const actions = {
     })
   },
   setFocus: (id: string, focus: Focus | undefined) => patchNotebook(id, () => ({ focus })),
+  /**
+   * محادثة لكل درس: فتح درس يستكمل محادثته السابقة إن وُجدت، وتُحفظ محادثة الدرس السابق في السجل.
+   * المحادثة الفارغة تُستعمل للدرس الجديد مباشرة.
+   */
+  openLesson(notebookId: string, focus: Focus) {
+    const key = lessonKey(focus)
+    setData((d) => {
+      const nb = d.notebooks.find((n) => n.id === notebookId)
+      if (!nb) return d
+      const cur = chatOf(nb)
+      if (nb.chatLesson === key || (!nb.chatLesson && nb.focus && lessonKey(nb.focus) === key)) return { ...d, notebooks: d.notebooks.map((n) => (n.id === notebookId ? { ...n, focus, chatLesson: key } : n)) }
+      const msgs = d.messages[cur] ?? []
+      let chats = nb.chats ?? []
+      if (msgs.length) chats = [{ id: cur, title: nb.focus?.title ?? chatTitle(msgs), at: msgs.at(-1)!.createdAt, lesson: nb.chatLesson ?? (nb.focus ? lessonKey(nb.focus) : undefined) }, ...chats.filter((c) => c.id !== cur)]
+      const prev = chats.find((c) => c.lesson === key)
+      const chatId = prev ? prev.id : msgs.length ? uid() : cur
+      chats = chats.filter((c) => c.id !== chatId)
+      return { ...d, notebooks: d.notebooks.map((n) => (n.id === notebookId ? { ...n, focus, chatId, chats, chatLesson: key } : n)) }
+    })
+  },
   /** يدمج تقدم الطالب في درس */
   recordStudy(s: Omit<Studied, 'at' | 'key'> & Partial<Pick<Studied, 'key'>>) {
     const key = s.key ?? `${s.bookId}:${s.from}-${s.to}`

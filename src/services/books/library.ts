@@ -130,3 +130,50 @@ export function syncLibrary(): Promise<number> {
   })().finally(() => (syncing = undefined))
   return syncing
 }
+
+/** فهرس الكتاب وحده (نصه ودروسه، بضع مئات من الكيلوبايت): يكفي للمدرّس والمحتوى الجاهز، والملف الأصلي يُجلب عند فتح صفحة */
+export async function installIndex(code: string, item: LibraryItem) {
+  if (!item.idx) return false
+  const res = await fetch(url(item.idx))
+  if (!res.ok) return false
+  const plain = await unseal(code, await res.arrayBuffer())
+  const json = await new Response(new Blob([plain]).stream().pipeThrough(new DecompressionStream('gzip'))).json()
+  const { meta, pages, chunks } = json
+  if (meta?.id !== item.id || !Array.isArray(pages) || !Array.isArray(chunks) || !chunks.every((c: { bookId?: string }) => c.bookId === item.id)) return false
+  await restoreDoc(meta, pages, chunks)
+  return true
+}
+
+// ===== الملف الأصلي عند الحاجة: القارئ، وصور الصفحات للمدرّس =====
+const pdfJobs = new Map<string, Promise<boolean>>()
+const pdfListeners = new Set<() => void>()
+let pdfProgress: Record<string, number> = {}
+export const onPdfProgress = (l: () => void) => (pdfListeners.add(l), () => void pdfListeners.delete(l))
+export const getPdfProgress = () => pdfProgress
+export function ensurePdf(bookId: string): Promise<boolean> {
+  let job = pdfJobs.get(bookId)
+  if (!job) {
+    job = (async () => {
+      if (await hasPdf(bookId)) return true
+      const code = savedCode()
+      if (!code) return false
+      const item = (await openLibrary(code)).find((i) => i.id === bookId)
+      if (!item) return false
+      const set = (p: number) => {
+        pdfProgress = { ...pdfProgress, [bookId]: p }
+        pdfListeners.forEach((l) => l())
+      }
+      set(0)
+      try {
+        await downloadBook(code, item, set)
+        return true
+      } finally {
+        const { [bookId]: _, ...rest } = pdfProgress
+        pdfProgress = rest
+        pdfListeners.forEach((l) => l())
+      }
+    })().catch(() => false).finally(() => pdfJobs.delete(bookId))
+    pdfJobs.set(bookId, job)
+  }
+  return job
+}

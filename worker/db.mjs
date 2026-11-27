@@ -26,6 +26,8 @@ export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS ai_errors (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, key_id TEXT, provider TEXT NOT NULL, project TEXT, model TEXT, code TEXT NOT NULL, status INTEGER, user_id TEXT)`,
   // مهلة الحصة لكل نموذج: Google تحسب حد الدقيقة واليوم لكل نموذج في المشروع
   `CREATE TABLE IF NOT EXISTS ai_cool (provider TEXT NOT NULL, project TEXT NOT NULL, model TEXT NOT NULL, cool_until INTEGER NOT NULL, reason TEXT NOT NULL, PRIMARY KEY (provider, project, model))`,
+  // محتوى الدروس الجاهز (worker/lessons.mjs): مشترك بين الطالبين، يكتبه المسؤول فقط
+  `CREATE TABLE IF NOT EXISTS lessons (book_id TEXT NOT NULL, section_id TEXT NOT NULL, title TEXT NOT NULL, json TEXT NOT NULL, parts TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'ai', model TEXT, updated INTEGER NOT NULL, size INTEGER NOT NULL, PRIMARY KEY (book_id, section_id))`,
   `CREATE TABLE IF NOT EXISTS ai_providers (id TEXT PRIMARY KEY, approved INTEGER NOT NULL DEFAULT 0, approved_at INTEGER, confirm TEXT)`,
 ]
 

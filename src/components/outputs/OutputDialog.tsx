@@ -39,7 +39,8 @@ function NoteView({ output, text, onDone }: { output: StudyOutput; text: string;
   )
 }
 
-export default function OutputDialog({ output, onClose }: { output: StudyOutput; onClose: () => void }) {
+/** prepared: محتوى جاهز من الدرس يُعرض دون تعديل، مع بيان مصدره */
+export default function OutputDialog({ output, onClose, prepared }: { output: StudyOutput; onClose: () => void; prepared?: string }) {
   const { data } = output
   const [editing, setEditing] = useState(false)
   // وقت المراجعة يُنسب إلى نوعها
@@ -50,12 +51,13 @@ export default function OutputDialog({ output, onClose }: { output: StudyOutput;
   }, [output.id])
   return (
     <Dialog variant="wide" title={output.title} onClose={onClose}>
+      {prepared && <p className="ready-tag">{prepared}</p>}
       {(data.kind === 'summary' || data.kind === 'compare') &&
         (editing ? (
           <NoteView output={output} text={data.text} onDone={() => setEditing(false)} />
         ) : (
           <>
-            <div>
+            <div hidden={!!prepared}>
               <button className="btn btn-sm" onClick={() => setEditing(true)}>
                 <Pencil aria-hidden="true" /> تعديل
               </button>

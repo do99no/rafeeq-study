@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, BookOpenCheck, BookPlus, Check, CircleHelp, Copy, GraduationCap, Layers, ListChecks, LoaderCircle, NotebookPen, RotateCcw, Square, Target, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowUp, BookOpenCheck, BookOpenText, BookPlus, Sparkles, WandSparkles, Check, CircleHelp, Copy, GraduationCap, Layers, ListChecks, LoaderCircle, NotebookPen, RotateCcw, Square, Target, Volume2, VolumeX, X } from 'lucide-react'
 import { num } from '../../lib/format'
 import { onAsk, takeAsk } from '../../lib/study'
 import { useDocs } from '../../services/books/process'
@@ -13,8 +13,11 @@ import { toast } from '../../store/toast'
 import type { Book, Focus, Level, Message, Notebook, StudyOutput, Task } from '../../types'
 import { RichText } from '../RichText'
 import { activity, logEvent, setTask } from '../../services/server/tracker'
+import { openPage } from '../../store/viewer'
 import { classify } from '../../services/study/intent'
 import { LessonPicker } from './LessonPicker'
+import { citeOf, packOf, textWithCites, usePacks, type LessonPack, type PackTool } from '../../services/study/lessonPack'
+import { normalize } from '../../lib/arabic'
 import { PagesNote } from './PagesNote'
 
 const NONE: Message[] = []
@@ -39,9 +42,33 @@ interface Props {
   activeIds: string[]
   onAddSource: () => void
   onOpenOutput: (o: StudyOutput) => void
+  /** على الهاتف: ينتقل إلى أدوات الدرس */
+  onTools?: () => void
+  /** يفتح أداة من المحتوى الجاهز للدرس */
+  onPack?: (p: LessonPack, t: PackTool) => void
 }
 
-export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutput }: Props) {
+/** خطوة من الشرح الجاهز: فكرة، ثم سؤال فهم ينتظر إجابة الطالب */
+function stepMessage(p: LessonPack, k: number): Omit<Message, 'id' | 'role' | 'createdAt'> {
+  const step = p.steps[k - 1]
+  const { text, citations } = textWithCites(p, `### ${step.title}\n${step.text}`)
+  const c = step.check
+  const cite = (c && citeOf(p, c.n)) ?? citations[0]
+  return {
+    task: 'teach', mode: 'ai', provider: 'محتوى جاهز', text, citations, part: { k, n: p.steps.length },
+    basis: p.cites.filter((x) => x.chunk >= 0 && (text.includes(`[${x.n}]`) || x.n === c?.n)).map((x) => ({ bookId: p.bookId, i: x.chunk })),
+    ...(c ? { check: { q: c.q, answer: c.answer, ...(c.options ? { options: c.options } : {}), ...(cite ? { cite } : {}) } } : {}),
+  }
+}
+const PACK_TEXT: Partial<Record<Task, (p: LessonPack, t: string) => string>> = {
+  summary: (p, t) => (/مختصر|قصير|سريع/.test(t) ? p.summary.short : /ليله الامتحان|قبل الامتحان/.test(t) ? p.summary.final : p.summary.full),
+  points: (p) => (p.points.length ? `### أهم ما تحفظه\n${p.points.map((x) => `- ${x}`).join('\n')}` : ''),
+  mistakes: (p) => (p.mistakes.length ? `> نصائح من رفيق مبنية على محتوى الكتاب، وليست أسئلة امتحان.\n\n${p.mistakes.map((x) => `- **الخطأ:** ${x.mistake}\n  **الصواب:** ${x.fix}${x.n ? ` [${x.n}]` : ''}`).join('\n')}` : ''),
+  terms: (p) => p.terms.map((x) => `- **${x.term}:** ${x.def}${x.n ? ` [${x.n}]` : ''}`).join('\n'),
+}
+
+export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutput, onTools, onPack }: Props) {
+  usePacks()
   const data = useData()
   const chatId = chatOf(notebook)
   const messages = data.messages[chatId] ?? NONE
@@ -60,6 +87,7 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
   const pinned = useRef(true)
 
   const focus = notebook.focus && activeIds.includes(notebook.focus.bookId) ? notebook.focus : undefined
+  const pack = focus ? packOf(focus.bookId, focus.sectionId) : undefined
   const openCheck = messages.findLast((m) => m.role === 'assistant' && m.check && !m.check.closed)
   const last = messages.at(-1)
 
@@ -151,7 +179,47 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
     }
     actions.addMessage(chatId, { id: uid(), role: 'user', text: a.quote ? `${text}\n«${a.quote.slice(0, 240)}${a.quote.length > 240 ? '…' : ''}»` : text, createdAt: Date.now() })
     setDraft('')
+    if (!grade && !a.basis && fromPack({ ...a, text })) return
     void ask({ ...a, text, grade }, history)
+  }
+
+  /** الشرح خطوة خطوة والملخصات من المحتوى الجاهز للدرس: فوراً ودون حصة. يعيد false إن لم يتوفر */
+  const fromPack = (a: Ask): boolean => {
+    const nb = getState().data.notebooks.find((n) => n.id === notebook.id) ?? notebook
+    const f = nb.focus && activeIds.includes(nb.focus.bookId) ? nb.focus : undefined
+    const p = f ? packOf(f.bookId, f.sectionId) : undefined
+    if (!f || !p) return false
+    const task = a.task ?? classify(a.text)
+    // الطلب الحر غير الشرح (سؤال، مثال، مقارنة…) يذهب إلى المدرّس المباشر
+    if (!a.task && task !== 'explain' && task !== 'teach') return false
+    let m: Omit<Message, 'id' | 'role' | 'createdAt'> | undefined
+    if ((task === 'teach' || task === 'explain') && p.steps.length) {
+      const k = Math.min(Math.max(1, a.part ?? 1), p.steps.length)
+      m = stepMessage(p, k)
+      actions.recordStudy({ bookId: f.bookId, title: f.title, from: f.from, to: f.to, notebookId: notebook.id, taught: m.part, ...(k === p.steps.length ? { explained: Date.now() } : {}) })
+      logEvent(k === 1 ? 'explain' : 'teach')
+      setTask('explain')
+    } else {
+      const body = PACK_TEXT[task]?.(p, normalize(a.text))
+      if (!body) return false
+      m = { task, mode: 'ai', provider: 'محتوى جاهز', ...textWithCites(p, body) }
+    }
+    actions.addMessage(chatId, { id: uid(), role: 'assistant', createdAt: Date.now(), ...m })
+    return true
+  }
+
+  /** سؤال اختيار من الشرح الجاهز: يُصحَّح فوراً على الجهاز */
+  const choose = (m: Message, option: string) => {
+    const c = m.check!
+    const right = normalize(option) === normalize(c.answer)
+    actions.updateMessage(chatId, m.id, { check: { ...c, closed: true } })
+    actions.addMessage(chatId, { id: uid(), role: 'user', text: option, createdAt: Date.now() })
+    actions.addMessage(chatId, {
+      id: uid(), role: 'assistant', createdAt: Date.now(), task: 'grade', mode: 'ai', provider: 'محتوى جاهز', verdict: right ? 'correct' : 'wrong',
+      text: right ? `أحسنت. «${c.answer}» هي الإجابة الصحيحة${c.cite ? ' [1]' : ''}.` : `الإجابة الصحيحة: **${c.answer}**${c.cite ? ' [1]' : ''}.\n\nإن لم يتضح لك السبب فاطلب «اشرحها بطريقة أخرى».`,
+      citations: c.cite ? [{ ...c.cite, n: 1 }] : [], basis: m.basis,
+    })
+    settle(m, right ? 'correct' : 'wrong', option)
   }
 
   // طلب من القارئ أو الرئيسية أو صفحة التقدم
@@ -178,6 +246,7 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
   /** اختبار أو بطاقات من الدرس الحالي تُحفظ في المراجعة */
   const make = async (kind: 'quiz' | 'cards') => {
     if (!focus) return setPicking(true)
+    if (pack && onPack) return onPack(pack, kind === 'quiz' ? 'quiz-medium' : 'cards')
     const c = (ctrl.current = new AbortController())
     setBusy(kind === 'quiz' ? 'يُعدّ اختباراً من الدرس…' : 'يُعدّ بطاقات من الدرس…')
     try {
@@ -237,7 +306,15 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
         { label: 'بسّط أكثر', ask: { text: 'لم أفهم، بسّط هذا الجزء أكثر', task: 'answer' } },
       ]
     if (m.mode !== 'ai') return []
+    if (m.task === 'teach' && m.part && m.part.k < m.part.n && !m.check)
+      return [
+        { label: `الفكرة التالية (${num(m.part.k + 1)} من ${num(m.part.n)})`, ask: { text: 'انتقل إلى الفكرة التالية', task: 'teach', part: m.part.k + 1 } },
+        { label: 'بسّط أكثر', ask: { text: 'لم أفهم، بسّط هذه الفكرة أكثر', task: 'answer' } },
+        { label: 'أعطني مثالاً', ask: { text: 'أعطني مثالاً على هذه الفكرة', task: 'examples' } },
+        { label: 'اختبرني', ask: { text: 'اختبرني في هذه الفكرة', task: 'check', basis: m.basis?.slice(0, 4) } },
+      ]
     return [
+      ...(tutorPart && tutorPart.k < tutorPart.n ? [{ label: `تابع الدرس (الفكرة ${num(tutorPart.k + 1)} من ${num(tutorPart.n)})`, ask: { text: 'انتقل إلى الفكرة التالية', task: 'teach' as Task, part: tutorPart.k + 1 } }] : []),
       { label: 'بسّط أكثر', ask: { text: 'لم أفهم، بسّط الشرح أكثر', task: 'answer' } },
       { label: 'أعطني مثالاً', ask: { text: 'أعطني مثالاً تطبيقياً', task: 'examples' } },
       { label: 'اشرح خطوة بخطوة', ask: { text: 'اشرحها خطوة بخطوة', task: 'steps' } },
@@ -313,6 +390,44 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
                   <Target aria-hidden="true" /> اختر الدرس
                 </button>
               )}
+              {ready && focus && (
+                <div className="lesson-start">
+                  <p className="muted">
+                    {books.find((b) => b.id === focus.bookId)?.title}، ص {num(focus.from)}
+                    {focus.to > focus.from ? `–${num(focus.to)}` : ''}
+                  </p>
+                  {pack ? (
+                    <>
+                      <p className="ready-tag">
+                        <Sparkles aria-hidden="true" /> {pack.status === 'reviewed' ? 'محتوى جاهز راجعه المسؤول' : 'محتوى جاهز من صفحات الكتاب، لم يراجعه معلم'}: شرح في {num(pack.steps.length)} خطوات، وملخصات، و{num(pack.quiz.length)} سؤالاً، و{num(pack.cards.length)} بطاقة
+                      </p>
+                      <button className="btn btn-primary btn-lg" onClick={() => send({ text: 'ادرس معي هذا الدرس خطوة بخطوة', task: 'teach' })}>
+                        <GraduationCap aria-hidden="true" /> ادرس مع رفيق
+                      </button>
+                      <div className="btn-row">
+                        <button className="btn btn-sm" onClick={() => onPack?.(pack, 'explain')}>
+                          <BookOpenCheck aria-hidden="true" /> الشرح كاملاً
+                        </button>
+                        <button className="btn btn-sm" onClick={() => openPage({ bookId: focus.bookId, page: focus.from })}>
+                          <BookOpenText aria-hidden="true" /> صفحات الكتاب
+                        </button>
+                        {onTools && (
+                          <button className="btn btn-sm" onClick={onTools}>
+                            <WandSparkles aria-hidden="true" /> أدوات الدرس
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="hint">لم يُجهَّز محتوى هذا الدرس بعد، وسيشرحه رفيق مباشرة من صفحاته (يحتاج إلى خدمة الذكاء الاصطناعي).</p>
+                      <button className="btn btn-primary btn-lg" onClick={() => send({ text: 'علّمني هذا الدرس خطوة بخطوة', task: 'teach' })}>
+                        <GraduationCap aria-hidden="true" /> ادرس مع رفيق
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {messages.map((m) =>
@@ -339,7 +454,18 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
                       <CircleHelp aria-hidden="true" /> سؤال للتأكد من فهمك
                     </p>
                     <p className="check-q">{m.check.q}</p>
-                    {!m.check.closed ? (
+                    {!m.check.closed && m.check.options?.length ? (
+                      <div className="check-options">
+                        {m.check.options.map((o) => (
+                          <button key={o} className="btn btn-sm" disabled={!idle} onClick={() => choose(m, o)}>
+                            {o}
+                          </button>
+                        ))}
+                        <button className="btn btn-sm btn-ghost" disabled={!idle} onClick={() => skip(m)}>
+                          لا أعرف، اشرحها لي
+                        </button>
+                      </div>
+                    ) : !m.check.closed ? (
                       <div className="btn-row">
                         <button className="btn btn-sm btn-primary" onClick={() => input.current?.focus()}>
                           اكتب إجابتك
@@ -427,7 +553,7 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
       <div className="composer-wrap">
         {ready && idle && focus && !openCheck && (
           <div className="lesson-actions" role="group" aria-label="ادرس هذا الدرس">
-            {LESSON_ACTIONS.map((a) => (
+            {LESSON_ACTIONS.filter((a) => !(pack && a.task === 'explain')).map((a) => (
               <button key={a.task} className="chip" onClick={() => send({ text: a.text, task: a.task })}>
                 <a.icon aria-hidden="true" /> {a.label}
               </button>
@@ -485,7 +611,7 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
         </form>
         <p className="composer-note">الإجابات مبنية على كتبك؛ راجع الصفحة الأصلية خاصة في المعادلات.</p>
       </div>
-      {picking && <LessonPicker books={books.filter((b) => activeIds.includes(b.id))} value={focus} onPick={(f: Focus) => actions.setFocus(notebook.id, f)} onClose={() => setPicking(false)} />}
+      {picking && <LessonPicker books={books.filter((b) => activeIds.includes(b.id))} value={focus} onPick={(f: Focus) => actions.openLesson(notebook.id, f)} onClose={() => setPicking(false)} />}
     </section>
   )
 }

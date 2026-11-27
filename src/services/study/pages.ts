@@ -53,7 +53,11 @@ async function openBook(bookId: string) {
     docCache = {
       bookId,
       doc: (async () => {
-        const blob = await getPdf(bookId, getState().activeId)
+        let blob = await getPdf(bookId, getState().activeId)
+        if (!blob) {
+          const { ensurePdf } = await import('../books/library')
+          if (await ensurePdf(bookId)) blob = await getPdf(bookId, getState().activeId)
+        }
         if (!blob) return null
         const { openDoc } = await import('../books/pdf')
         return openDoc(blob)
@@ -73,6 +77,7 @@ export function pageImage(ref: PageRef, width = 1100): Promise<string | null> {
       (async () => {
         try {
           const d = await openBook(ref.bookId)
+          if (!d) docCache = undefined
           if (!d || ref.page < 1 || ref.page > d.doc.numPages) return null
           const { renderPage } = await import('../books/pdf')
           const page = await d.doc.getPage(ref.page)

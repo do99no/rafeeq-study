@@ -50,11 +50,15 @@ export async function beginStudent(user: User): Promise<{ empty: boolean }> {
   void serverLibraryCode()
     .then((code) => code && !load<string>('library-code') && save('library-code', code))
     .catch(() => {})
+  let empty = false
   try {
-    return { empty: !(await pull()) }
+    empty = !(await pull())
   } catch {
-    return { empty: false }
+    /* دون اتصال */
   }
+  // المنهج والمحتوى الجاهز بعد وصول بيانات الطالب، كي لا تتكرر دفاتره
+  void import('../books/curriculum').then((c) => c.setupCurriculum())
+  return { empty }
 }
 
 /** الخروج: تُغلق جلسة الدراسة أولاً (والرمز ما زال صالحاً)، ثم تُمسح بيانات الطالب من الجهاز */

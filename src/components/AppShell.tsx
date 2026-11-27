@@ -10,8 +10,8 @@ import { Dialog } from './Dialog'
 
 const NAV = [
   { to: '/', label: 'الرئيسية', icon: House },
-  { to: '/notebooks', label: 'الدفاتر', icon: NotebookTabs },
-  { to: '/library', label: 'المكتبة', icon: Library },
+  { to: '/notebooks', label: 'المواد', icon: NotebookTabs },
+  { to: '/library', label: 'الكتب', icon: Library },
   { to: '/review', label: 'المراجعة', icon: GraduationCap },
   { to: '/exams', label: 'الامتحانات', icon: FileCheck },
   { to: '/progress', label: 'التقدم', icon: ChartNoAxesColumn },

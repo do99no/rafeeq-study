@@ -16,6 +16,7 @@ function plural(n: number, zero: string, one: string, two: string, few: string, 
 export const booksCount = (n: number) => plural(n, 'بلا مصادر', 'مصدر واحد', 'مصدران', 'مصادر', 'مصدراً', 'مصدر')
 export const cardsCount = (n: number) => plural(n, 'بلا بطاقات', 'بطاقة واحدة', 'بطاقتان', 'بطاقات', 'بطاقة', 'بطاقة')
 export const questionsCount = (n: number) => plural(n, 'بلا أسئلة', 'سؤال واحد', 'سؤالان', 'أسئلة', 'سؤالاً', 'سؤال')
+export const lessonsCount = (n: number) => plural(n, 'بلا دروس', 'درس واحد', 'درسان', 'دروس', 'درساً', 'درس')
 
 export function ago(ts: number) {
   const s = Math.round((ts - Date.now()) / 1000)

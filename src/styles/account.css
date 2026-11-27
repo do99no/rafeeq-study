@@ -139,3 +139,10 @@
 .exam-lessons .check-row[data-level='2'] { padding-inline-start: 1.25rem; }
 .page .tabs { margin-top: 0; }
 .page .admin-grid { margin-top: 0.75rem; }
+/* الشريط المضغوط (داخل الدفتر): رموز فقط، دون أن يتجاوز عرضه */
+@media (min-width: 900px) {
+  .shell-compact .account-box { padding: 0.4rem; border: 0; background: none; justify-items: center; }
+  .shell-compact .account-box strong { display: none; }
+  .shell-compact .account-box .account-state { font-size: 0; gap: 0; }
+  .shell-compact .account-box .btn { font-size: 0; padding: 0.45rem; gap: 0; }
+}

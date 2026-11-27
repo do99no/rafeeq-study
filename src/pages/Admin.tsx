@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowRight, BookOpen, CalendarDays, ChartNoAxesColumn, ClipboardList, History, KeyRound, LoaderCircle, LogOut, RefreshCw, ShieldCheck, TriangleAlert, UserRound, Zap } from 'lucide-react'
+import { ArrowRight, BookOpen, BookOpenCheck, CalendarDays, ChartNoAxesColumn, ClipboardList, History, KeyRound, LoaderCircle, LogOut, RefreshCw, ShieldCheck, TriangleAlert, UserRound, Zap } from 'lucide-react'
 import { DailyBars, dur, SplitBars, Trend } from '../components/admin/Charts'
 import { num } from '../lib/format'
 import { go, Link } from '../router'
 import { adminSetPassword, api, changePassword, logout, ServerError } from '../services/server/account'
 import { toast } from '../store/toast'
 import { AdminAI } from './AdminAI'
+import { AdminContent } from './AdminContent'
 import { coverage, EXAM_SOURCES } from '../services/study/exams'
 
 interface Summary {
@@ -782,6 +783,9 @@ export default function AdminApp({ path }: { path: string }) {
           </span>
         </Link>
         <span className="grow" />
+        <Link to="/admin/content" className="btn btn-sm">
+          <BookOpenCheck aria-hidden="true" /> جاهزية المحتوى
+        </Link>
         <Link to="/admin/ai" className="btn btn-sm">
           <Zap aria-hidden="true" /> الذكاء الاصطناعي
         </Link>
@@ -789,7 +793,7 @@ export default function AdminApp({ path }: { path: string }) {
           <KeyRound aria-hidden="true" /> حسابي
         </Link>
       </header>
-      <main className="main">{sid ? <StudentPage key={sid} id={sid} /> : path === '/admin/me' ? <OwnAccount /> : path === '/admin/ai' ? <AdminAI /> : <Overview />}</main>
+      <main className="main">{sid ? <StudentPage key={sid} id={sid} /> : path === '/admin/me' ? <OwnAccount /> : path === '/admin/ai' ? <AdminAI /> : path === '/admin/content' ? <AdminContent /> : <Overview />}</main>
     </div>
   )
 }

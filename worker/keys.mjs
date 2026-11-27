@@ -225,7 +225,7 @@ export async function poolChat(b, env, ctx, user, signal, buildBody) {
         if (!secret) throw new HttpError(502, 'auth')
         const { base } = baseOf(provider, k, env)
         // النماذج التي «تفكّر» مع صور الصفحات قد تتأخر في أول بايت
-        const res = await upstream(`${base}/chat/completions`, secret, buildBody(model.id, vision, PROVIDERS[provider].extra), signal, 90_000)
+        const res = await upstream(`${base}/chat/completions`, secret, buildBody(model.id, vision, PROVIDERS[provider].extra), signal, ctx?.role === 'admin' ? 180_000 : 90_000)
         await run(DB, "UPDATE ai_keys SET status = 'ok', last_ok = ? WHERE id = ?", Date.now(), k.id)
         const done = (tin, tout) => logUsage(DB, k, model.id, user, 'chat', true, tin, tout)
         // تسجيل الرموز بعد انتهاء البث دون تأخير الطالب

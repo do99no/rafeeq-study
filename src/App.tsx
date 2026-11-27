@@ -24,7 +24,7 @@ const Exams = lazy(() => import('./pages/Exams'))
 const PageViewer = lazy(() => import('./components/PageViewer'))
 const AdminApp = lazy(() => import('./pages/Admin'))
 
-const TITLES: Record<string, string> = { '/notebooks': 'الدفاتر', '/library': 'المكتبة', '/review': 'المراجعة', '/progress': 'التقدم', '/exams': 'الامتحانات والتدريب', '/settings': 'الإعدادات' }
+const TITLES: Record<string, string> = { '/notebooks': 'المواد والدفاتر', '/library': 'الكتب', '/review': 'المراجعة', '/progress': 'التقدم', '/exams': 'الامتحانات والتدريب', '/settings': 'الإعدادات' }
 
 function useDisplaySettings() {
   const { theme, textSize } = useStore((s) => s.data.settings)

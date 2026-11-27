@@ -108,3 +108,75 @@ button.mm-node { min-height: 44px; }
 .mm-node[data-depth='2'] { background: var(--teal-soft); border-color: transparent; }
 .mm-node svg.lucide { width: 1rem; height: 1rem; transition: transform 0.15s; }
 .mm-node[aria-expanded='false'] svg { transform: rotate(90deg); }
+
+/* ===== مساحة الدراسة: الدروس | رفيق | أدوات الدرس ===== */
+@media (max-width: 1179px) {
+  .ws { grid-template-rows: auto auto minmax(0, 1fr); }
+  .ws > .ws-side { border: 0; }
+}
+.ws-tabs { display: flex; margin: 0.5rem 1rem 0; }
+.ws-tabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; min-width: 0; white-space: nowrap; }
+.ws-tabs button svg { width: 1rem; height: 1rem; flex: none; }
+@media (max-width: 380px) { .ws-tabs button { font-size: 0.82rem; padding-inline: 0.3rem; } .ws-tabs button svg { display: none; } }
+@media (min-width: 1180px) { .ws { grid-template-columns: 19rem minmax(0, 1fr) 18rem; } }
+
+.tree { display: flex; flex-direction: column; gap: 0.6rem; }
+.tree-book { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); }
+.tree-book > summary { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.6rem; cursor: pointer; list-style: none; }
+.tree-book > summary::-webkit-details-marker { display: none; }
+.tree-book > summary input { flex: none; }
+.tree-book > summary .grow { display: flex; flex-direction: column; min-width: 0; }
+.tree-book .tree-caret { width: 1rem; height: 1rem; flex: none; color: var(--ink-2); transition: transform 0.15s; }
+.tree-book[open] .tree-caret { transform: rotate(180deg); }
+.tree-book .lesson-list { padding: 0 0.35rem 0.4rem; max-height: none; }
+.tree-book .lesson-row[aria-current='true'] { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.lesson-row .ready, .lesson-row .studied { width: 0.95rem; height: 0.95rem; flex: none; }
+.lesson-row .ready { color: var(--brand); opacity: 0.75; }
+.lesson-row .studied { color: var(--teal); }
+
+.ready-tag { display: flex; gap: 0.4rem; align-items: flex-start; font-size: 0.82rem; color: var(--brand-ink); background: var(--brand-soft); border-radius: var(--r-sm); padding: 0.45rem 0.65rem; line-height: 1.6; }
+.ready-tag svg { width: 0.95rem; height: 0.95rem; flex: none; margin-top: 0.2rem; }
+.more-tools { margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 0.75rem; }
+.more-tools > summary { cursor: pointer; font-weight: 600; font-size: 0.92rem; margin-bottom: 0.6rem; }
+.tool small { font-size: 0.75rem; }
+
+.lesson-start { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; margin-top: 0.5rem; max-width: 34rem; }
+.lesson-start .ready-tag { text-align: start; }
+.btn-lg { padding: 0.8rem 1.6rem; font-size: 1.02rem; }
+.check-options { display: grid; gap: 0.45rem; margin-top: 0.4rem; }
+.check-options .btn { justify-content: flex-start; text-align: start; white-space: normal; height: auto; padding-block: 0.55rem; line-height: 1.6; }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--ink-2); }
+
+/* ===== الرئيسية: المواد ===== */
+.subject-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr)); gap: 0.8rem; }
+.subject-card { position: relative; display: flex; flex-direction: column; gap: 0.25rem; padding: 1rem 1.1rem 1rem 1rem; padding-inline-start: 1.3rem; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); box-shadow: var(--shadow); color: inherit; text-decoration: none; overflow: hidden; }
+.subject-card:hover { border-color: var(--brand); }
+.subject-card .spine { position: absolute; inset-block: 0; inset-inline-start: 0; width: 0.35rem; background: var(--hue, var(--brand)); }
+.subject-card strong { font-size: 1.05rem; }
+.subject-card[data-hue='violet'] { --hue: var(--violet); } .subject-card[data-hue='teal'] { --hue: var(--teal); } .subject-card[data-hue='plum'] { --hue: var(--plum); }
+.subject-card[data-hue='indigo'] { --hue: var(--indigo); } .subject-card[data-hue='olive'] { --hue: var(--olive); } .subject-card[data-hue='clay'] { --hue: var(--clay); }
+
+/* ===== لوحة المسؤول: جاهزية المحتوى ===== */
+.content-sum .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center; }
+.content-sum .stat-row strong { display: block; font-size: 1.5rem; }
+.content-sum .stat-row small { color: var(--ink-2); }
+.meter { height: 0.5rem; border-radius: 1rem; background: var(--sunken); overflow: hidden; margin-block: 0.8rem; }
+.meter span { display: block; height: 100%; background: var(--brand); }
+.content-book > summary { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; }
+.content-book .count[data-full='true'] { color: var(--teal); font-weight: 700; }
+.content-lessons li { display: flex; align-items: center; gap: 0.4rem; }
+.content-lessons li .grow { display: flex; flex-direction: column; min-width: 0; }
+.content-lessons li[data-state='ok'] > svg { color: var(--teal); }
+.content-lessons li[data-state='part'] > svg { color: var(--clay); }
+.content-lessons li[data-state='hidden'] { opacity: 0.6; }
+.content-lessons .icon-btn[aria-pressed='true'] { color: var(--brand); background: var(--brand-soft); }
+.prep-log ul { max-height: 14rem; overflow-y: auto; font-size: 0.85rem; padding-inline-start: 1rem; }
+/* الهاتف: رأس الدفتر في سطر واحد لتبقى المساحة للمحادثة */
+@media (max-width: 560px) {
+  .ws-head { flex-wrap: nowrap; padding-block: 0.45rem; }
+  .ws-head .ws-title p { display: none; }
+  .ws-head-actions { width: auto; flex: none; }
+  .ws-head h1 { font-size: 1.1rem; }
+  .ws-tabs { margin-top: 0.35rem; }
+}
+.ws-tabs button[aria-selected='true'] { background: var(--surface); color: var(--brand-ink); font-weight: 600; box-shadow: 0 1px 3px rgb(41 35 58 / 12%); }

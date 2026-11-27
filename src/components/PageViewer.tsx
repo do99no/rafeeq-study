@@ -20,6 +20,7 @@ export default function PageViewer({ target }: { target: ViewerTarget }) {
   const meta = useDocs()[bookId]
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null)
   const [error, setError] = useState('')
+  const [fetching, setFetching] = useState(false)
   const [page, setPage] = useState(target.page)
   const [field, setField] = useState(String(target.page))
   const [zoom, setZoom] = useState(1)
@@ -34,8 +35,16 @@ export default function PageViewer({ target }: { target: ViewerTarget }) {
     let dead = false
     void (async () => {
       try {
-        const blob = await getPdf(bookId, getState().activeId)
-        if (!blob) return setError('ملف هذا الكتاب غير موجود في هذا المتصفح. أضفه من المكتبة، وسيُربط تلقائياً باستشهاداته.')
+        let blob = await getPdf(bookId, getState().activeId)
+        // الكتاب منزّل بفهرسه فقط: يُجلب ملفه الأصلي من المكتبة مرة واحدة
+        if (!blob) {
+          setFetching(true)
+          const { ensurePdf } = await import('../services/books/library')
+          if (await ensurePdf(bookId)) blob = await getPdf(bookId, getState().activeId)
+          if (!dead) setFetching(false)
+        }
+        if (dead) return
+        if (!blob) return setError('تعذّر جلب صفحات هذا الكتاب. تحقق من الاتصال ثم أعد فتحه، أو نزّله من المكتبة.')
         const pdf = await import('../services/books/pdf')
         const o = await pdf.openDoc(blob)
         if (dead) return o.close()
@@ -161,6 +170,7 @@ export default function PageViewer({ target }: { target: ViewerTarget }) {
         )}
         {bad && <p className="hint">نص هذه الصفحة غير مفهرس، فلن تظهر في البحث.</p>}
         {weak && <p className="hint">بعض رسوم هذه الصفحة أو معادلاتها أو رموزها لم تُقرأ، فاعتمد على صورتها هنا.</p>}
+        {fetching && !error && <p className="thinking">يجلب صفحات الكتاب الأصلية إلى هذا الجهاز (مرة واحدة)…</p>}
         {error ? (
           <p className="reader-error">{error}</p>
         ) : (

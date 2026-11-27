@@ -1,36 +1,23 @@
-import { useState } from 'react'
-import { ArrowLeft, BookOpenCheck, ChevronLeft, CircleHelp, GraduationCap, Layers, Library, NotebookPen, Plus, Target } from 'lucide-react'
+import { ArrowLeft, Layers } from 'lucide-react'
 import { isDue, normalCards } from '../components/outputs/CardsView'
-import { NotebookCard } from '../components/NotebookCard'
-import { NotebookForm } from '../components/NotebookForm'
-import { LessonPicker } from '../components/workspace/LessonPicker'
-import { ago, num } from '../lib/format'
+import { ago, booksCount, lessonsCount, num } from '../lib/format'
+import { setupCurriculum, useCurriculum } from '../services/books/curriculum'
+import { packOf, usePacks } from '../services/study/lessonPack'
 import { startStudy } from '../lib/study'
 import { Link } from '../router'
 import { isSearchable, useDocs } from '../services/books/process'
 import { useData, useStore } from '../store/store'
-import type { Focus, Task } from '../types'
 import { PlanCard } from '../components/PlanCard'
-
-const START: { label: string; text: string; task: Task; icon: typeof Target; hint: string }[] = [
-  { label: 'اشرح لي الدرس', text: 'اشرح لي هذا الدرس من البداية', task: 'explain', icon: BookOpenCheck, hint: 'شرح منظم كامل' },
-  { label: 'علّمني خطوة بخطوة', text: 'علّمني هذا الدرس خطوة بخطوة', task: 'teach', icon: GraduationCap, hint: 'فكرة، مثال، سؤال' },
-  { label: 'لخّصه لي', text: 'لخّص لي هذا الدرس', task: 'summary', icon: NotebookPen, hint: 'ملخص بعناوين ونقاط' },
-  { label: 'اختبرني', text: 'اختبرني في هذا الدرس', task: 'check', icon: CircleHelp, hint: 'أسئلة وتصحيح' },
-]
 
 export function Home() {
   const data = useData()
   const { notebooks, books, studied, mistakes, outputs } = data
   const docs = useDocs()
   const name = useStore((s) => s.profiles.find((p) => p.id === s.activeId)?.name ?? '')
-  const [creating, setCreating] = useState(false)
-  const ready = books.filter((b) => isSearchable(docs[b.id]))
-  const subjects = [...new Set(ready.map((b) => b.subject ?? b.title))]
-  const [subject, setSubject] = useState('')
-  const [picking, setPicking] = useState(false)
-  const [focus, setFocus] = useState<Focus | null>(null)
-  const subjectBooks = ready.filter((b) => (b.subject ?? b.title) === subject)
+  const setup = useCurriculum()
+  usePacks()
+  // دفتر لكل مادة (يُنشأ تلقائياً)، ثم بقية دفاتر الطالب
+  const subjectNbs = [...notebooks].filter((n) => n.bookIds.length).sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
 
   const last = Object.values(studied).sort((a, b) => b.at - a.at).slice(0, 3)
   const open = mistakes.filter((m) => !m.resolved)
@@ -45,75 +32,49 @@ export function Home() {
           <h1>
             {hour < 12 ? 'صباح الخير' : 'مساء الخير'}، {name}
           </h1>
-          <p className="muted">اختر درساً، وسيشرحه لك رفيق ويختبرك فيه من كتابك.</p>
+          <p className="muted">اختر مادة ثم درساً، وادرسه مع رفيق: شرح خطوة خطوة، وأسئلة، وملخصات واختبارات جاهزة من كتابك.</p>
         </div>
       </header>
 
       <PlanCard />
-      <section className="start panel" aria-labelledby="start-h">
-        <h2 id="start-h">
-          <Target aria-hidden="true" /> ابدأ الدراسة
-        </h2>
-        {ready.length === 0 ? (
-          <div className="start-empty">
-            <p className="muted">لا توجد كتب جاهزة على هذا الجهاز بعد. نزّل كتب المنهج من المكتبة برمز المكتبة.</p>
-            <Link to="/library" className="btn btn-primary">
-              <Library aria-hidden="true" /> افتح المكتبة
-            </Link>
+      <section aria-labelledby="subj-h">
+        <div className="section-head">
+          <h2 id="subj-h">موادي</h2>
+          {setup.phase === 'books' && <small className="muted">يجهّز كتب المنهج على هذا الجهاز ({num(setup.done)} من {num(setup.total)})…</small>}
+        </div>
+        {subjectNbs.length === 0 ? (
+          <div className="start-empty panel">
+            {setup.phase === 'error' ? (
+              <>
+                <p className="muted">تعذّر تجهيز كتب المنهج على هذا الجهاز. تحقق من الاتصال ثم أعد المحاولة.</p>
+                <button className="btn btn-primary" onClick={() => void setupCurriculum()}>إعادة المحاولة</button>
+              </>
+            ) : (
+              <p className="thinking">يجهّز رفيق موادك وكتبها لأول مرة…</p>
+            )}
           </div>
         ) : (
-          <>
-            <div className="step">
-              <span className="step-n">١</span>
-              <div className="grow">
-                <p className="step-t">المادة</p>
-                <div className="chips">
-                  {subjects.map((s) => (
-                    <button
-                      key={s}
-                      className="chip"
-                      aria-pressed={subject === s}
-                      onClick={() => {
-                        setSubject(s)
-                        setFocus(null)
-                        setPicking(true)
-                      }}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="step" data-off={!subject}>
-              <span className="step-n">٢</span>
-              <div className="grow">
-                <p className="step-t">الدرس</p>
-                <button className="focus-btn" disabled={!subject} onClick={() => setPicking(true)}>
-                  <span className="grow">
-                    <strong>{focus ? focus.title : subject ? 'اختر الدرس' : 'اختر المادة أولاً'}</strong>
-                    {focus && <small>{books.find((b) => b.id === focus.bookId)?.title}، ص {num(focus.from)}–{num(focus.to)}</small>}
-                  </span>
-                  <ChevronLeft aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-            <div className="step" data-off={!focus}>
-              <span className="step-n">٣</span>
-              <div className="grow">
-                <p className="step-t">كيف تريد أن تدرس؟</p>
-                <div className="start-actions">
-                  {START.map((a) => (
-                    <button key={a.task} className="tool" disabled={!focus} onClick={() => focus && startStudy(focus.bookId, focus, { text: a.text, task: a.task })}>
-                      <a.icon aria-hidden="true" />
-                      <span>{a.label}</span>
-                      <small className="muted">{a.hint}</small>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </>
+          <div className="subject-grid">
+            {subjectNbs.map((n) => {
+              const nbBooks = n.bookIds.filter((id) => isSearchable(docs[id]))
+              const lessons = nbBooks.flatMap((id) => (docs[id]?.sections ?? []).map((sec) => ({ id, sec })))
+              const readyN = lessons.filter((x) => packOf(x.id, x.sec.id)).length
+              const doneN = Object.values(studied).filter((x) => nbBooks.includes(x.bookId) && (x.explained || x.taught || x.checks)).length
+              return (
+                <Link key={n.id} to={`/notebooks/${n.id}`} className="subject-card" data-hue={n.hue}>
+                  <span className="spine" aria-hidden="true" />
+                  <strong>{n.title}</strong>
+                  <small className="muted">
+                    {booksCount(nbBooks.length)}، {lessonsCount(lessons.length)}
+                  </small>
+                  <small className="muted">
+                    {readyN ? `محتوى جاهز: ${lessonsCount(readyN)}` : 'المحتوى الجاهز قيد الإعداد'}
+                    {doneN ? `، درست ${lessonsCount(doneN)}` : ''}
+                  </small>
+                </Link>
+              )
+            })}
+          </div>
         )}
       </section>
 
@@ -183,39 +144,6 @@ export function Home() {
         </div>
       )}
 
-      {notebooks.length > 0 && (
-        <section aria-labelledby="shelf-h">
-          <div className="section-head">
-            <h2 id="shelf-h">دفاتري</h2>
-            <span className="btn-row">
-              <button className="btn btn-sm" onClick={() => setCreating(true)}>
-                <Plus aria-hidden="true" /> دفتر
-              </button>
-              <Link to="/notebooks" className="text-link">
-                عرض الكل
-              </Link>
-            </span>
-          </div>
-          <div className="nb-grid">
-            {[...notebooks]
-              .sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.lastOpenedAt - a.lastOpenedAt)
-              .slice(0, 3)
-              .map((n) => (
-                <NotebookCard key={n.id} nb={n} />
-              ))}
-          </div>
-        </section>
-      )}
-      {picking && subject && (
-        <LessonPicker
-          books={subjectBooks}
-          value={focus ?? undefined}
-          title={`دروس ${subject}`}
-          onPick={(f) => setFocus(f)}
-          onClose={() => setPicking(false)}
-        />
-      )}
-      {creating && <NotebookForm onClose={() => setCreating(false)} />}
     </div>
   )
 }
