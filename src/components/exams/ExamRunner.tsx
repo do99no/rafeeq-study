@@ -69,6 +69,10 @@ export function ExamRunner({ output, onClose }: { output: StudyOutput & { data: 
         out.push({ verdict: 'skipped' })
         continue
       }
+      if (x.link) {
+        out.push({ verdict: 'review', text: 'لا نموذج إجابة رسمياً منشوراً لهذه الورقة، ورفيق لا يرى صفحاتها، فلا تصحيح آلياً لها. قارن إجاباتك بكتابك أو اعرضها على معلم، أو انسخ نص أي سؤال إلى المحادثة ليشرحه لك رفيق من الكتاب.' })
+        continue
+      }
       if (!OPEN_TYPES.includes(x.type) && !x.pageTask) {
         out.push({ verdict: normalize(given) === normalize(x.answer) ? 'correct' : 'wrong' })
         continue
@@ -94,7 +98,7 @@ export function ExamRunner({ output, onClose }: { output: StudyOutput & { data: 
     if (auto.length) actions.addAttempt({ outputId: output.id, score: auto.reduce((s, { r }) => s + (r.verdict === 'correct' ? 1 : r.verdict === 'partial' ? 0.5 : 0), 0), total: auto.length, results: out.map((r) => r.verdict === 'correct') })
     actions.addMistakes(
       out.flatMap((r, k) => {
-        if (r.verdict !== 'wrong' && r.verdict !== 'partial') return []
+        if ((r.verdict !== 'wrong' && r.verdict !== 'partial') || !qs[k].cite.bookId) return []
         const x = qs[k]
         const lesson = lessonOf(x.cite.bookId, x.cite.page)
         return [{ bookId: x.cite.bookId, bookTitle: x.cite.bookTitle, page: lesson?.page ?? x.cite.page, topic: lesson?.title ?? r.topic ?? output.title, q: x.q, answer: x.answer || 'انظر التصحيح المقترح', given: answers[k].slice(0, 300), source: 'quiz' as const }]
@@ -147,10 +151,16 @@ export function ExamRunner({ output, onClose }: { output: StudyOutput & { data: 
               {x.why && <p className="muted">{x.why}</p>}
               {results[k].text && <RichText text={results[k].text!} />}
               <div className="btn-row">
-                <button className="btn btn-sm" onClick={() => openPage({ bookId: x.cite.bookId, page: x.cite.page, quote: x.cite.quote })}>
-                  <BookOpenText aria-hidden="true" /> الصفحة ص {num(x.cite.page)}
-                </button>
-                {results[k].verdict !== 'correct' && (
+                {x.link ? (
+                  <a className="btn btn-sm" href={x.link} target="_blank" rel="noreferrer">
+                    <BookOpenText aria-hidden="true" /> صفحة الورقة {num(x.cite.page)}
+                  </a>
+                ) : (
+                  <button className="btn btn-sm" onClick={() => openPage({ bookId: x.cite.bookId, page: x.cite.page, quote: x.cite.quote })}>
+                    <BookOpenText aria-hidden="true" /> الصفحة ص {num(x.cite.page)}
+                  </button>
+                )}
+                {results[k].verdict !== 'correct' && !x.link && (
                   <button className="btn btn-sm btn-primary" onClick={() => study(x)}>
                     اشرح لي الدرس
                   </button>
@@ -184,11 +194,15 @@ export function ExamRunner({ output, onClose }: { output: StudyOutput & { data: 
         <p className="exam-q">
           <strong>{num(i + 1)}.</strong> <bdi>{q.q}</bdi> <small className="muted">({QUESTION_TYPES[q.type]})</small>
         </p>
-        {q.pageTask && (
+        {q.pageTask && (q.link ? (
+          <a className="btn btn-sm" href={q.link} target="_blank" rel="noreferrer">
+            <BookOpenText aria-hidden="true" /> افتح صفحة الورقة {num(q.cite.page)} (من مصدرها الحكومي)
+          </a>
+        ) : (
           <button className="btn btn-sm" onClick={() => openPage({ bookId: q.cite.bookId, page: q.cite.page })}>
             <BookOpenText aria-hidden="true" /> افتح صفحة الأسئلة ص {num(q.cite.page)}
           </button>
-        )}
+        ))}
         {q.options && !OPEN_TYPES.includes(q.type) ? (
           <div className="exam-options" role="radiogroup">
             {q.options.map((o) => (

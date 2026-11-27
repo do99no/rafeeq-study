@@ -191,7 +191,7 @@ function Overview() {
       <div className="admin-grid">{data?.students.map((s) => <StudentCard key={s.id} s={s} />)}</div>
       <section className="panel">
         <h2 className="mini-h">المحتوى التدريبي وما ينقص</h2>
-        <p className="muted small">لا امتحان شهادة سابقاً مؤرخاً ولا نموذج إجابة رسمياً في الكتب المتوفرة. المتوفر: {EXAM_SOURCES.map((x) => x.title).join('، ')}.</p>
+        <p className="muted small">امتحانات الشهادة المتوفرة: أبريل 2020 لست مواد (من موقع حكومي، تُفتح من مصدرها)، وامتحان تجريبي للعلوم الهندسية. لا نموذج إجابة رسمياً لأي سنة. ومن الكتب: {EXAM_SOURCES.map((x) => x.title).join('، ')}.</p>
         <div className="table-wrap">
           <table className="admin-table">
             <thead>
@@ -210,7 +210,7 @@ function Overview() {
                   <td>{num(c.past)}</td>
                   <td>{num(c.model)}</td>
                   <td>{num(c.style)}</td>
-                  <td>{c.past ? '—' : 'امتحانات السنوات السابقة ونماذج إجابتها الرسمية'}</td>
+                  <td>{c.past ? 'سنوات غير 2020، ونماذج الإجابة الرسمية' : 'امتحانات السنوات السابقة ونماذج إجابتها الرسمية'}</td>
                 </tr>
               ))}
             </tbody>

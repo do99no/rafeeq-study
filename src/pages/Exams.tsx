@@ -6,7 +6,7 @@ import { num } from '../lib/format'
 import { notebookFor } from '../lib/study'
 import { Link } from '../router'
 import { useDocs } from '../services/books/process'
-import { buildExam, coverage, EXAM_SOURCES, lessonOf, type ExamSource } from '../services/study/exams'
+import { buildExam, coverage, EXAM_SOURCES, EXTERNAL_PAPERS, externalExam, GUIDE_2025, lessonOf, type ExamSource } from '../services/study/exams'
 import { LEVEL_ASK, makeQuiz, QUESTION_TYPES, StudyError } from '../services/study/generate'
 import { Unavailable } from '../services/ai/manager'
 import { actions, uid, useData } from '../store/store'
@@ -46,7 +46,7 @@ function ExamsTab({ run }: { run: (o: QuizOutput) => void }) {
   return (
     <>
       <p className="insight">
-        <TriangleAlert aria-hidden="true" /> لم يُعثر في الكتب الخمسة عشر المتوفرة على أي امتحان شهادة سوداني سابق مؤرخ، ولا على نموذج إجابة رسمي. المتوفر نماذج وأسئلة بنمط الشهادة، وكل منها موسوم بمصدره. لإضافة امتحانات السنوات السابقة يلزم توفير ملفاتها من مصدر رسمي.
+        <TriangleAlert aria-hidden="true" /> امتحانات الشهادة المتوفرة: امتحان أبريل 2020 لست مواد، منشوراً على موقع حكومي سوداني، ويُفتح من مصدره. لا نموذج إجابة رسمياً منشوراً لأي سنة، ولا امتحانات سنوات أخرى من مصدر رسمي. باقي المصادر نماذج وأسئلة بنمط الشهادة من الكتب، وكل منها موسوم بمصدره.
       </p>
       <section className="panel">
         <h3 className="mini-h">ما يتوفر لكل مادة</h3>
@@ -59,6 +59,7 @@ function ExamsTab({ run }: { run: (o: QuizOutput) => void }) {
                 <th>نماذج امتحان</th>
                 <th>أسئلة بنمط الشهادة</th>
                 <th>نماذج إجابة رسمية</th>
+                <th>المقرر وهيكل الامتحان 2025</th>
               </tr>
             </thead>
             <tbody>
@@ -69,12 +70,34 @@ function ExamsTab({ run }: { run: (o: QuizOutput) => void }) {
                   <td>{num(c.model)}</td>
                   <td>{num(c.style)}</td>
                   <td>{num(c.officialKeys)}</td>
+                  <td>{c.guide ? <a href={`${GUIDE_2025.url}#page=${c.guide}`} target="_blank" rel="noreferrer">الدليل الرسمي ص {num(c.guide)}</a> : '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
+      <h3 className="mini-h">امتحانات سابقة من مصدر حكومي</h3>
+      <div className="admin-grid">
+        {EXTERNAL_PAPERS.map((x) => (
+          <article key={x.id} className="panel exam-source">
+            <h3 className="mini-h">{x.title}</h3>
+            <p className={x.kind === 'past' ? 'pill ok' : 'pill'}>{x.kind === 'past' ? 'امتحان شهادة' : 'امتحان تجريبي'} · {x.issuer}</p>
+            <p className="muted small">
+              {num(x.pages)} صفحات · الزمن {num(x.minutes / 60)} ساعات (مطبوع على الورقة) · {x.note}
+            </p>
+            <div className="btn-row">
+              <a className="btn" href={x.url} target="_blank" rel="noreferrer">
+                افتح الورقة
+              </a>
+              <button className="btn btn-primary" onClick={() => run(save(x.title, data.books.find((b) => b.subject === x.subject)?.id ?? data.books[0]?.id ?? '', externalExam(x), { mode: 'exam', sourceId: x.id, subject: x.subject, minutes: x.minutes, estimated: false }))}>
+                <Play aria-hidden="true" /> حلّ بزمن الامتحان
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+      <h3 className="mini-h">نماذج وأسئلة بنمط الشهادة من الكتب</h3>
       <div className="admin-grid">
         {EXAM_SOURCES.map((s) => {
           const ready = !!docs[s.bookId]?.chunkCount

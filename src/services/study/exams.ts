@@ -55,13 +55,67 @@ export const EXAM_SOURCES: ExamSource[] = [
   },
 ]
 
+/**
+ * امتحانات منشورة على موقع حكومي سوداني (gmoe.gov.sd، وزارة التربية والتعليم بولاية الجزيرة)، فُحصت (2026-11-27):
+ * ترويستها «جمهورية السودان – وزارة التربية والتعليم – مجلس امتحانات السودان – امتحان الشهادة الثانوية – أبريل 2020»،
+ * والزمن مطبوع عليها. هي نسخ ممسوحة عليها شعار sudanexams.com. لا يُعاد نشرها لعدم وضوح حقوقها: تُفتح من مصدرها.
+ * لا نموذج إجابة رسمياً منشوراً لأي منها.
+ */
+const GOV = 'https://gmoe.gov.sd/wp-content/uploads/2025/06/'
+export interface ExternalPaper {
+  id: string
+  subject: string
+  title: string
+  kind: 'past' | 'mock'
+  date: string
+  issuer: string
+  url: string
+  pages: number
+  minutes: number
+  note: string
+}
+export const EXTERNAL_PAPERS: ExternalPaper[] = [
+  ...([
+    ['physics', 'الفيزياء', 'الفيزياء-2020.pdf', 8],
+    ['math-special', 'الرياضيات', 'المتخصصة-2020.pdf', 8, 'الرياضيات المتخصصة'],
+    ['math-basic', 'الرياضيات', 'الاساسية-2020-1.pdf', 6, 'الرياضيات الأساسية'],
+    ['biology', 'الأحياء', 'الاحياء-2020-1.pdf', 8],
+    ['english', 'اللغة الإنجليزية', 'الانجليزية-2020.pdf', 8],
+    ['arabic', 'اللغة العربية', 'اللغة-العربية-2020.pdf', 8],
+  ] as [string, string, string, number, string?][]).map(([id, subject, file, pages, name]) => ({
+    id: `sd2020-${id}`, subject, title: `امتحان الشهادة الثانوية السودانية: ${name ?? subject} (أبريل 2020)`, kind: 'past' as const, date: 'أبريل 2020',
+    issuer: 'مجلس امتحانات السودان (كما في ترويسة الورقة)', url: GOV + encodeURIComponent(file), pages, minutes: 180,
+    note: 'من موقع وزارة التربية والتعليم بولاية الجزيرة. الدور غير مذكور. لا نموذج إجابة رسمي منشور.',
+  })),
+  {
+    id: 'gezira-mock-2020-engineering', subject: 'العلوم الهندسية', title: 'امتحان تجريبي للشهادة: العلوم الهندسية (يناير 2020)', kind: 'mock', date: 'يناير 2020',
+    issuer: 'وزارة التربية والتعليم، ولاية الجزيرة (امتحان تجريبي، ليس امتحان شهادة)', url: GOV + encodeURIComponent('هندسية-2020.pdf'), pages: 8, minutes: 180,
+    note: 'امتحان تجريبي ولائي، وليس امتحان الشهادة الرسمي.',
+  },
+]
+/** دليل امتحان الشهادة الثانوية 2025 (المركز القومي للمناهج): هيكل الامتحان والمقرر لكل مادة، بصفحاته */
+export const GUIDE_2025 = {
+  url: 'https://gmoe.gov.sd/wp-content/uploads/2025/08/' + encodeURIComponent('دليل-امتحانات-الشهادة-الثانوية-2025م.pdf'),
+  issuer: 'وزارة التربية والتعليم، المركز القومي للمناهج والبحث التربوي (بخت الرضا)',
+  pages: { 'التربية الإسلامية': 5, 'اللغة العربية': 20, 'اللغة الإنجليزية': 28, 'الرياضيات': 44, 'الكيمياء': 52, 'الفيزياء': 62, 'الأحياء': 91, 'العلوم الهندسية': 116 } as Record<string, number>,
+}
+
 /** المواد الثماني: ما وُجد لكل منها وما ينقص */
 export const SUBJECTS = ['الرياضيات', 'الفيزياء', 'الكيمياء', 'الأحياء', 'العلوم الهندسية', 'اللغة العربية', 'التربية الإسلامية', 'اللغة الإنجليزية']
 export function coverage() {
   return SUBJECTS.map((s) => {
     const list = EXAM_SOURCES.filter((x) => x.subject === s)
-    return { subject: s, past: list.filter((x) => x.kind === 'past').length, model: list.filter((x) => x.kind === 'model').length, style: list.filter((x) => x.kind === 'style').length, officialKeys: 0 }
+    const ext = EXTERNAL_PAPERS.filter((x) => x.subject === s)
+    return { subject: s, past: ext.filter((x) => x.kind === 'past').length, mock: ext.filter((x) => x.kind === 'mock').length, model: list.filter((x) => x.kind === 'model').length, style: list.filter((x) => x.kind === 'style').length, officialKeys: 0, guide: GUIDE_2025.pages[s] ?? null }
   })
+}
+
+/** ورقة خارجية في وضع الامتحان: مهمة لكل صفحة تُفتح من مصدرها، دون تصحيح آلي (لا نموذج إجابة ولا صور لدى رفيق) */
+export function externalExam(x: ExternalPaper): QuizQuestion[] {
+  return Array.from({ length: x.pages }, (_, i) => ({
+    type: 'essay', q: `أجب عن أسئلة الصفحة ${i + 1} من الورقة.`, answer: '', why: '', pageTask: true, link: `${x.url}#page=${i + 1}`, origin: `${x.title}، ${x.issuer}`,
+    cite: { n: 1, bookId: '', bookTitle: x.title, page: i + 1, chunk: 0, quote: '' },
+  }))
 }
 
 /** الدرس الذي تقع فيه صفحة، لربط الخطأ بشرحه في الكتاب */
