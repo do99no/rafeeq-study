@@ -28,13 +28,13 @@ export function classify(status, body) {
   return 'bad_request'
 }
 
-export async function upstream(url, key, body, signal) {
+export async function upstream(url, key, body, signal, firstByteMs = FIRST_BYTE_MS) {
   const ctrl = new AbortController()
   let timedOut = false
   const timer = setTimeout(() => {
     timedOut = true
     ctrl.abort()
-  }, FIRST_BYTE_MS)
+  }, firstByteMs)
   const stop = () => ctrl.abort()
   signal?.addEventListener('abort', stop)
   let res

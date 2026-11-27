@@ -74,9 +74,12 @@ export async function approvedProviders(DB, env = {}) {
 }
 
 /** حالة حصة مشروع: متاح، قريب من الحد، مستنفد، غير معروف */
-export async function quotaState(DB, provider, project) {
-  const q = await one(DB, 'SELECT cool_until, reason FROM ai_quota WHERE provider = ? AND project = ?', provider, project)
-  if (q && q.cool_until > Date.now()) return { state: 'exhausted', until: q.cool_until, reason: q.reason }
+export async function quotaState(DB, provider, project, model) {
+  // بلا نموذج (لوحة المسؤول): أقرب مهلة قائمة لأي نموذج، مع اسمه
+  const q = model
+    ? await one(DB, 'SELECT cool_until, reason, model FROM ai_cool WHERE provider = ? AND project = ? AND model = ? AND cool_until > ?', provider, project, model, Date.now())
+    : await one(DB, 'SELECT cool_until, reason, model FROM ai_cool WHERE provider = ? AND project = ? AND cool_until > ? ORDER BY cool_until DESC', provider, project, Date.now())
+  if (q) return { state: model ? 'exhausted' : 'near', until: q.cool_until, reason: `${q.reason}: ${q.model}` }
   const lim = KNOWN[provider]?.rpd
   if (!lim) return { state: 'unknown' }
   const used = (await one(DB, 'SELECT COALESCE(SUM(requests), 0) AS n FROM ai_usage WHERE provider = ? AND project = ? AND day = ?', provider, project, utcDay()))?.n ?? 0
@@ -99,12 +102,12 @@ function nextReset(provider) {
  * يختار مفتاحاً للمزود: المشروع الأساسي (أول مشروع فيه مفتاح سليم)، ثم الأقدم استخداماً داخله.
  * إذا كانت حصة المشروع الأساسي مستنفدة أو في مهلة حد الدقيقة: لا مفتاح (ينتقل الطلب إلى مزود آخر).
  */
-export async function pickKey(DB, provider, exclude = []) {
+export async function pickKey(DB, provider, exclude = [], model) {
   const keys = await all(DB, "SELECT * FROM ai_keys WHERE provider = ? AND enabled = 1 AND status NOT IN ('auth', 'missing') ORDER BY project, created", provider)
   const usable = keys.filter((k) => !exclude.includes(k.id))
   if (!usable.length) return { key: null, why: keys.length ? 'keys_failed' : 'no_keys' }
   const primary = usable[0].project
-  const q = await quotaState(DB, provider, primary)
+  const q = await quotaState(DB, provider, primary, model)
   if (q.state === 'exhausted') return { key: null, why: 'quota', until: q.until }
   const inProject = usable.filter((k) => k.project === primary).sort((a, b) => (a.last_used ?? 0) - (b.last_used ?? 0))
   return { key: inProject[0], quota: q }
@@ -122,7 +125,7 @@ async function onError(DB, k, e, model, user) {
   await run(DB, 'DELETE FROM ai_errors WHERE id <= (SELECT MAX(id) - 1000 FROM ai_errors)')
   // الازدحام والتأخر من المزود لا من المفتاح: لا تتغير حالة المفتاح
   await run(DB, "UPDATE ai_keys SET last_error = ?, last_error_at = ?, status = CASE WHEN ? IN ('auth', 'quota', 'rate', 'bad_request') THEN ? ELSE status END WHERE id = ?", code, now, code, code === 'bad_request' ? 'error' : code, k.id)
-  const cool = (until, reason) => run(DB, 'INSERT INTO ai_quota (provider, project, cool_until, reason) VALUES (?, ?, ?, ?) ON CONFLICT(provider, project) DO UPDATE SET cool_until = excluded.cool_until, reason = excluded.reason', k.provider, k.project, until, reason)
+  const cool = (until, reason) => run(DB, 'INSERT INTO ai_cool (provider, project, model, cool_until, reason) VALUES (?, ?, ?, ?, ?) ON CONFLICT(provider, project, model) DO UPDATE SET cool_until = excluded.cool_until, reason = excluded.reason', k.provider, k.project, model, until, reason)
   // الحصة وحد الدقيقة يخصان المشروع كله: لا تبديل داخل المزود
   if (code === 'quota') await cool(Math.max(nextReset(k.provider), now + 60_000), 'quota')
   if (code === 'rate') await cool(now + Math.min(Number(e.body?.retryAfter) || 60, 600) * 1000, 'rate')
@@ -201,9 +204,16 @@ export async function poolChat(b, env, ctx, user, signal, buildBody) {
     const tried = []
     while (attempts < MAX_ATTEMPTS && mi < models.length) {
       const model = models[mi]
-      const pick = await pickKey(DB, provider, tried)
+      const pick = await pickKey(DB, provider, tried, model.id)
       if (!pick.key) {
         if (pick.until) soonest = soonest ? Math.min(soonest, pick.until) : pick.until
+        // حصة هذا النموذج منتهية: النموذج المجاني التالي (لكل نموذج حصته عند المزود)
+        if (pick.why === 'quota') {
+          mi++
+          // النموذج التالي يبدأ من المشروع الأساسي نفسه، لا من مشروع آخر
+          tried.length = 0
+          continue
+        }
         break
       }
       const k = pick.key
@@ -214,7 +224,8 @@ export async function poolChat(b, env, ctx, user, signal, buildBody) {
         const secret = await secretOf(k, env)
         if (!secret) throw new HttpError(502, 'auth')
         const { base } = baseOf(provider, k, env)
-        const res = await upstream(`${base}/chat/completions`, secret, buildBody(model.id, vision, PROVIDERS[provider].extra), signal)
+        // النماذج التي «تفكّر» مع صور الصفحات قد تتأخر في أول بايت
+        const res = await upstream(`${base}/chat/completions`, secret, buildBody(model.id, vision, PROVIDERS[provider].extra), signal, 90_000)
         await run(DB, "UPDATE ai_keys SET status = 'ok', last_ok = ? WHERE id = ?", Date.now(), k.id)
         const done = (tin, tout) => logUsage(DB, k, model.id, user, 'chat', true, tin, tout)
         // تسجيل الرموز بعد انتهاء البث دون تأخير الطالب
@@ -230,9 +241,17 @@ export async function poolChat(b, env, ctx, user, signal, buildBody) {
         if (r.code === 'server' || r.code === 'timeout' || r.code === 'model' || r.code === 'network') {
           busy.set(`${provider}/${model.id}`, Date.now() + 60_000)
           mi++
+          // النموذج التالي يبدأ من المشروع الأساسي نفسه، لا من مشروع آخر
+          tried.length = 0
           continue
         }
-        // الحصة أو حد الدقيقة: مزود آخر
+        // الحصة أو حد الدقيقة لهذا النموذج: النموذج المجاني التالي، ثم مزود آخر
+        if (r.code === 'quota' || r.code === 'rate') {
+          mi++
+          // النموذج التالي يبدأ من المشروع الأساسي نفسه، لا من مشروع آخر
+          tried.length = 0
+          continue
+        }
         break
       }
     }
@@ -251,7 +270,7 @@ export async function poolEmbed(b, env, user, signal) {
   const model = p.embedModels[0]
   const tried = []
   for (let i = 0; i < 2; i++) {
-    const pick = await pickKey(DB, provider, tried)
+    const pick = await pickKey(DB, provider, tried, model)
     if (!pick.key) throw new HttpError(503, 'quota', { retryAfter: pick.until ? Math.ceil((pick.until - Date.now()) / 1000) : 300 })
     const k = pick.key
     tried.push(k.id)

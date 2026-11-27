@@ -24,6 +24,8 @@ export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS ai_quota (provider TEXT NOT NULL, project TEXT NOT NULL, cool_until INTEGER NOT NULL, reason TEXT NOT NULL, PRIMARY KEY (provider, project))`,
   `CREATE TABLE IF NOT EXISTS ai_usage (day TEXT NOT NULL, key_id TEXT NOT NULL, provider TEXT NOT NULL, project TEXT NOT NULL, model TEXT NOT NULL, user_id TEXT NOT NULL, kind TEXT NOT NULL, requests INTEGER NOT NULL DEFAULT 0, ok INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0, tokens_in INTEGER NOT NULL DEFAULT 0, tokens_out INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, key_id, model, user_id, kind))`,
   `CREATE TABLE IF NOT EXISTS ai_errors (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, key_id TEXT, provider TEXT NOT NULL, project TEXT, model TEXT, code TEXT NOT NULL, status INTEGER, user_id TEXT)`,
+  // مهلة الحصة لكل نموذج: Google تحسب حد الدقيقة واليوم لكل نموذج في المشروع
+  `CREATE TABLE IF NOT EXISTS ai_cool (provider TEXT NOT NULL, project TEXT NOT NULL, model TEXT NOT NULL, cool_until INTEGER NOT NULL, reason TEXT NOT NULL, PRIMARY KEY (provider, project, model))`,
   `CREATE TABLE IF NOT EXISTS ai_providers (id TEXT PRIMARY KEY, approved INTEGER NOT NULL DEFAULT 0, approved_at INTEGER, confirm TEXT)`,
 ]
 
