@@ -53,7 +53,12 @@ export function AdminContent() {
 
   const info = (b: string, s: string) => ready.find((r) => r.bookId === b && r.sectionId === s)
   const subjectOf = (b: string) => books?.find((x) => x.item.id === b)?.item.subject ?? ''
-  const complete = (i?: PackInfo) => !!i && i.parts.includes('checked') && i.parts.includes(`rv${reviewVersion(subjectOf(i.bookId))}`)
+  const complete = (i?: PackInfo) => {
+    if (!i || !i.parts.includes('checked')) return false
+    const subject = subjectOf(i.bookId)
+    // الرياضيات: لا جاهزية دون تحقق مستقل من الحلول
+    return i.parts.includes(`rv${reviewVersion(subject)}`) && (subject !== 'الرياضيات' || i.parts.includes('verified'))
+  }
   const say = (t: string) => setLog((l) => [`${new Date().toLocaleTimeString('ar')}: ${t}`, ...l].slice(0, 60))
 
   /** يجهّز دروس الكتب المعطاة واحداً تلو الآخر حتى يكتمل أو تنفد الحصة أو يُوقف */

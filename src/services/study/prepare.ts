@@ -318,10 +318,14 @@ export async function prepareLesson(l: Lesson, doc: DocMeta, signal: AbortSignal
     const items = itemsToSolve(pack).filter((x) => l.subject === 'الرياضيات' || x.kind === 'problem' || /[0-9٠-٩]/.test(x.stored))
     if (items.length) {
       onProgress?.({ phase: 'يتحقق من الحلول بحل مستقل' })
-      const r = await ask(system, passages + SOLVE_ASK(items), shots, note, signal)
-      const j = parseJson(r.text)
-      const list = Array.isArray(j?.answers) ? (j!.answers as Record<string, unknown>[]) : []
-      const finals = items.map((_, i) => str(list.find((x) => Number(x?.i) === i + 1)?.final))
+      let finals: string[] = []
+      // محاولتان: رد مقطوع أو JSON تالف لا يُسقط التحقق بصمت
+      for (let attempt = 0; attempt < 2 && !finals.some(Boolean); attempt++) {
+        const r = await ask(system, passages + SOLVE_ASK(items), shots, note, signal)
+        const j = parseJson(r.text)
+        const list = Array.isArray(j?.answers) ? (j!.answers as Record<string, unknown>[]) : []
+        finals = items.map((_, i) => str(list.find((x) => Number(x?.i) === i + 1)?.final))
+      }
       if (finals.some(Boolean)) {
         verified = 'independent'
         const { disputed } = compare(items, finals)
@@ -342,6 +346,8 @@ export async function prepareLesson(l: Lesson, doc: DocMeta, signal: AbortSignal
     if (l.subject !== 'الرياضيات') for (const x of [...pack.quiz, ...pack.worksheet]) if (x.type === 'problem' && !x.flag && verified !== 'independent') x.flag = 'مسألة لم يُتحقق من حلها آلياً؛ راجع الناتج في صفحة الكتاب.'
   }
   review = { ...reviewPack(pack, verified), v: reviewVersion(l.subject) }
+  // الرياضيات لا تُعد جاهزة دون تحقق مستقل؛ إعادة الفحص لاحقاً تكمله دون إعادة التجهيز
+  if (l.subject === 'الرياضيات' && verified !== 'independent' && itemsToSolve(pack).length) review.missing.push('التحقق المستقل من الحلول')
   pack.review = review
   return { pack, dropped, reused }
 }
