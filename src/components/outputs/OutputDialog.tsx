@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { logEvent, setTask } from '../../services/server/tracker'
-import { Pencil } from 'lucide-react'
+import { Pencil, Printer } from 'lucide-react'
+import { printOutput } from '../../lib/print'
 import { actions } from '../../store/store'
 import { toast } from '../../store/toast'
 import type { StudyOutput } from '../../types'
@@ -52,6 +53,11 @@ export default function OutputDialog({ output, onClose, prepared }: { output: St
   return (
     <Dialog variant="wide" title={output.title} onClose={onClose}>
       {prepared && <p className="ready-tag">{prepared}</p>}
+      <div className="btn-row">
+        <button className="btn btn-sm" onClick={() => printOutput(output) || toast('اسمح للموقع بفتح نافذة جديدة لطباعة هذه الورقة.')}>
+          <Printer aria-hidden="true" /> {data.kind === 'quiz' ? 'طباعة مع نموذج الإجابة' : 'طباعة أو حفظ PDF'}
+        </button>
+      </div>
       {(data.kind === 'summary' || data.kind === 'compare') &&
         (editing ? (
           <NoteView output={output} text={data.text} onDone={() => setEditing(false)} />
