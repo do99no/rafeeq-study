@@ -194,6 +194,7 @@ export function QuizView({ output, questions, onClose }: { output: StudyOutput; 
               </p>
             )}
             {note && <p className="hint">{note}</p>}
+            {q.flag && <p className="warn">تحتاج مراجعة: {q.flag}</p>}
             <blockquote className="cite-quote">
               <p>
                 <Inline text={q.cite.quote} />

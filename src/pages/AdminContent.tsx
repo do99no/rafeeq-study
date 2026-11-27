@@ -8,12 +8,10 @@ import { downloadBook, lessonCatalog, openLibrary, type LibraryItem } from '../s
 import { docsReady, getDocs } from '../services/books/process'
 import type { Section } from '../services/books/types'
 import { api, serverLibraryCode } from '../services/server/account'
-import type { PackInfo } from '../services/study/lessonPack'
+import type { LessonPack, PackInfo } from '../services/study/lessonPack'
 import { lessonsOf, prepareLesson, setPackStatus, uploadPack } from '../services/study/prepare'
 import { toast } from '../store/toast'
 
-/** الأجزاء التي يُعدّ الدرس بها مكتملاً */
-const CORE = ['steps', 'summary', 'quiz', 'cards']
 const PART_LABEL: Record<string, string> = { steps: 'الشرح', summary: 'الملخصات', guide: 'دليل الدراسة', terms: 'المصطلحات', laws: 'القوانين', points: 'النقاط المهمة', mistakes: 'الأخطاء الشائعة', mindmap: 'الخريطة الذهنية', qa: 'سؤال وجواب', cards: 'البطاقات', quiz: 'الاختبارات', worksheet: 'ورقة العمل' }
 // الرياضيات أولاً، ثم المواد العلمية، ثم بقية المواد
 const ORDER = ['الرياضيات', 'الفيزياء', 'الكيمياء', 'الأحياء', 'العلوم الهندسية', 'اللغة العربية', 'اللغة الإنجليزية', 'التربية الإسلامية']
@@ -53,7 +51,7 @@ export function AdminContent() {
   }, [])
 
   const info = (b: string, s: string) => ready.find((r) => r.bookId === b && r.sectionId === s)
-  const complete = (i?: PackInfo) => !!i && CORE.every((p) => i.parts.includes(p))
+  const complete = (i?: PackInfo) => !!i && i.parts.includes('checked')
   const say = (t: string) => setLog((l) => [`${new Date().toLocaleTimeString('ar')}: ${t}`, ...l].slice(0, 60))
 
   /** يجهّز دروس الكتب المعطاة واحداً تلو الآخر حتى يكتمل أو تنفد الحصة أو يُوقف */
@@ -74,6 +72,9 @@ export function AdminContent() {
           await downloadBook(code, t.book.item, () => {})
         }
         const doc = getDocs()[id]
+        const old = new Map<string, LessonPack>()
+        if (t.lessons.some((x) => info(id, x.id)))
+          for (const p of (await api<{ lessons: LessonPack[] }>(`/lessons/${encodeURIComponent(id)}`)).lessons) old.set(p.sectionId, p)
         // ثلاثة دروس معاً من الكتاب نفسه (ضمن حد الطلبات في الدقيقة)، والكتب واحداً بعد الآخر
         const queue = [...t.lessons]
         let stop = false
@@ -83,12 +84,13 @@ export function AdminContent() {
             const sec = s
             setJob({ bookId: id, sectionId: sec.id, phase: 'يبدأ' })
             try {
-              const { pack, dropped } = await prepareLesson({ bookId: id, bookTitle: t.book.item.title, subject: t.book.item.subject, section: sec }, doc, c.signal, (p) => setJob({ bookId: id, sectionId: sec.id, ...p }))
+              const { pack, dropped, reused } = await prepareLesson({ bookId: id, bookTitle: t.book.item.title, subject: t.book.item.subject, section: sec }, doc, c.signal, (p) => setJob({ bookId: id, sectionId: sec.id, ...p }), old.get(sec.id))
               await uploadPack(pack)
               done++
               failed = 0
               waits = 0
-              say(`«${sec.title}» (${t.book.item.title}): ${num(pack.steps.length)} خطوات، ${num(pack.quiz.length)} سؤالاً، ${num(pack.cards.length)} بطاقة${dropped ? `، حُذف ${num(dropped)} بنداً لم يثبت في الكتاب` : ''}`)
+              const rv = pack.review
+              say(`«${sec.title}» (${t.book.item.title}): ${reused ? 'فُحصت النسخة الموجودة' : 'جُهّز'}، ${num(pack.steps.length)} خطوات، ${num(pack.quiz.length)} سؤالاً، ${num(pack.cards.length)} بطاقة${dropped ? `، حُذف ${num(dropped)} بنداً لم يثبت في الكتاب` : ''}${rv?.missing.length ? `، ينقصه: ${rv.missing.join('، ')}` : ''}${rv?.issues.length ? `، مشكلات: ${rv.issues.slice(0, 3).join('، ')}` : ''}${rv?.flagged ? `، ${num(rv.flagged)} بنداً يحتاج مراجعة` : ''}${rv?.verified === 'independent' ? '، الحلول متحقق منها بحل مستقل' : ''}`)
               await loadIndex()
             } catch (e) {
               if (c.signal.aborted) return
@@ -109,7 +111,7 @@ export function AdminContent() {
                 return
               }
               failed++
-              say(`تعذّر تجهيز «${sec.title}» (${t.book.item.title}). سيُعاد في المرة القادمة.`)
+              say(`تعذّر تجهيز «${sec.title}» (${t.book.item.title}): ${(e as Error)?.message ?? 'خطأ'}. سيُعاد في المرة القادمة.`)
               if (failed >= 4) {
                 if (!stop) say('توقف التجهيز بعد أربع محاولات فاشلة متتالية.')
                 stop = true
@@ -139,6 +141,8 @@ export function AdminContent() {
   const total = books.reduce((n, b) => n + b.lessons.length, 0)
   const readyN = books.reduce((n, b) => n + b.lessons.filter((s) => complete(info(b.item.id, s.id))).length, 0)
   const reviewed = ready.filter((r) => r.status === 'reviewed').length
+  const flaggedN = ready.filter((r) => r.parts.includes('flagged')).length
+  const verifiedN = ready.filter((r) => r.parts.includes('verified')).length
 
   return (
     <div className="page">
@@ -154,6 +158,8 @@ export function AdminContent() {
           <div><strong>{num(readyN)}</strong><small>من {num(total)} درساً جاهز</small></div>
           <div><strong>{num(Math.round((readyN / Math.max(1, total)) * 100))}٪</strong><small>نسبة الجاهزية</small></div>
           <div><strong>{num(reviewed)}</strong><small>راجعه المسؤول</small></div>
+          <div><strong>{num(flaggedN)}</strong><small>فيه بنود تحتاج مراجعة</small></div>
+          <div><strong>{num(verifiedN)}</strong><small>حلوله متحقق منها بحل مستقل</small></div>
         </div>
         <div className="meter" aria-hidden="true"><span style={{ width: `${(readyN / Math.max(1, total)) * 100}%` }} /></div>
         <p className="hint">المحتوى من إعداد Gemini من صفحات الكتاب (النص وصور الصفحات)، ويُحذف آلياً كل بند لا يرتبط بمقطع من الدرس. يظهر للطالب موسوماً بأنه لم يراجعه معلم حتى تعلّمه «راجعته». الصفحة يجب أن تبقى مفتوحة أثناء التجهيز.</p>
@@ -210,6 +216,8 @@ export function AdminContent() {
                         ص {num(s.page)}–{num(s.endPage)}
                         {i ? `، جُهّز ${ago(i.updated)}` : '، لم يُجهَّز'}
                         {i?.status === 'reviewed' ? '، راجعه المسؤول' : i?.status === 'hidden' ? '، مخفي عن الطالبين' : ''}
+                        {i && !i.parts.includes('checked') ? '، لم يجتز الفحص بعد' : ''}
+                        {i?.parts.includes('flagged') ? '، فيه بنود تحتاج مراجعة' : ''}
                         {lacks.length && i ? `، ينقصه: ${lacks.map((p) => PART_LABEL[p]).join('، ')}` : ''}
                       </small>
                     </span>

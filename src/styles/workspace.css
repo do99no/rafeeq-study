@@ -157,7 +157,7 @@ button.mm-node { min-height: 44px; }
 .subject-card[data-hue='indigo'] { --hue: var(--indigo); } .subject-card[data-hue='olive'] { --hue: var(--olive); } .subject-card[data-hue='clay'] { --hue: var(--clay); }
 
 /* ===== لوحة المسؤول: جاهزية المحتوى ===== */
-.content-sum .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center; }
+.content-sum .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: 0.5rem; text-align: center; }
 .content-sum .stat-row strong { display: block; font-size: 1.5rem; }
 .content-sum .stat-row small { color: var(--ink-2); }
 .meter { height: 0.5rem; border-radius: 1rem; background: var(--sunken); overflow: hidden; margin-block: 0.8rem; }

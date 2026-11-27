@@ -47,6 +47,11 @@ export async function put(request, env, book, section, body) {
     const v = p[k]
     return Array.isArray(v) ? v.length > 0 : v && typeof v === 'object' ? Object.keys(v).length > 0 : typeof v === 'string' && v.length > 0
   })
+  // «جاهز» = فُحص فلا أداة ناقصة ولا استشهاد أو إجابة غير صالحة؛ و«flagged» = فيه بنود تحتاج مراجعة
+  const r = p.review
+  if (r && Array.isArray(r.missing) && Array.isArray(r.issues) && !r.missing.length && !r.issues.length) parts.push('checked')
+  if (r?.flagged > 0) parts.push('flagged')
+  if (r?.verified === 'independent') parts.push('verified')
   const json = JSON.stringify(p)
   if (json.length > MAX_PACK) throw new HttpError(413, 'too_large')
   const now = Date.now()

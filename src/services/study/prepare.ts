@@ -6,9 +6,10 @@ import type { Chunk, DocMeta, Section } from '../books/types'
 import type { Hit } from '../rag/types'
 import { api } from '../server/account'
 import { cleanCites, passagesText } from './assistant'
-import type { LessonPack, PackCite, PackNode, PackQuestion, PackStep } from './lessonPack'
+import { reviewPack, type LessonPack, type PackReview, type PackCite, type PackNode, type PackQuestion, type PackStep } from './lessonPack'
 import { pageImages } from './pages'
 import { errataNote, errataOf } from '../../data/errata'
+import { applyVerdicts, itemsToSolve, SOLVE_ASK } from './verify'
 import { STRICT, subjectGuide, SYMBOLIC } from './prompts'
 
 /**
@@ -122,7 +123,8 @@ export interface Progress {
 }
 
 /** يجهّز درساً واحداً ويعيد الحزمة دون رفعها */
-export async function prepareLesson(l: Lesson, doc: DocMeta, signal: AbortSignal, onProgress?: (p: Progress) => void): Promise<{ pack: LessonPack; dropped: number }> {
+/** existing: حزمة سابقة مكتملة الأدوات تُفحص وتُتحقق حلولها فقط، دون إعادة توليدها */
+export async function prepareLesson(l: Lesson, doc: DocMeta, signal: AbortSignal, onProgress?: (p: Progress) => void, existing?: LessonPack): Promise<{ pack: LessonPack; dropped: number; reused: boolean }> {
   const s = l.section
   const all = (await getChunks(l.bookId)).filter((c) => c.page >= s.page && c.page <= s.endPage && c.text.length > 30)
   const hits: Hit[] = spread(all.map((c) => ({ ...c, bookTitle: l.bookTitle, score: 0 })), BUDGET)
@@ -172,104 +174,160 @@ export async function prepareLesson(l: Lesson, doc: DocMeta, signal: AbortSignal
   }
   const arr = (v: unknown) => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') as Record<string, unknown>[] : [])
 
-  // ١. الشرح والملخصات والمصطلحات
-  let A: Record<string, unknown> | null = null
+  // ١. الشرح والملخصات والمصطلحات، ٢. التدريب: طلبان مستقلان، ويُعاد منهما ما نقصت أدواته فقط
   let model = ''
-  for (let i = 0; i < 2 && !A?.steps; i++) {
-    onProgress?.({ phase: 'يكتب الشرح والملخصات' })
-    const r = await ask(system, passages + TEACH(s.title, symbolic, hits.length), shots, note, signal, (chars) => onProgress?.({ phase: 'يكتب الشرح والملخصات', chars }))
-    A = parseJson(r.text)
-    model = r.model
-  }
-  if (!A) throw new Error('parse')
-  const steps: PackStep[] = keep(arr(A.steps).map((x) => {
-    const c = x.check as Record<string, unknown> | undefined
-    const opts = Array.isArray(c?.options) ? [...new Set((c!.options as unknown[]).map(str))].filter(Boolean) : []
-    const answer = str(c?.answer)
-    // خيارات لا تطابق الإجابة: يبقى السؤال بإجابة حرة بدلاً من حذفه
-    const hit = opts.length >= 3 ? opts.find((o) => normalize(o) === normalize(answer)) : undefined
-    const cn = c ? nOf(c, c.q, answer) : undefined
-    const check = c && str(c.q) && answer ? { q: str(c.q), answer: hit ?? answer, ...(hit ? { options: opts } : {}), ...(cn ? { n: cn } : {}) } : undefined
-    return { title: str(x.title), text: clean(x.text), ...(check?.answer ? { check } : {}) }
-  }), (x) => !!x.title && /\[\d+\]/.test(x.text))
-  if (!steps.length) throw new Error('steps')
-  const sum = (A.summary ?? {}) as Record<string, unknown>
-  const walk = (v: unknown, depth: number): PackNode[] =>
-    depth > 4 ? [] : arr(v).flatMap((o) => {
-      const label = str(o.label)
-      const n = nOf(o, o.label)
-      const children = walk(o.children, depth + 1)
-      if (!label || (!children.length && !grounded(n, label))) return []
-      return [{ label, ...(n ? { n } : {}), ...(children.length ? { children } : {}) }]
-    })
-  const mind = A.mindmap as Record<string, unknown> | undefined
-
-  // ٢. التدريب
-  let B: Record<string, unknown> | null = null
-  for (let i = 0; i < 2 && !B?.quiz; i++) {
-    onProgress?.({ phase: 'يكتب الأسئلة والبطاقات' })
-    const r = await ask(system, passages + PRACTICE(s.title, symbolic, hits.length), shots, note, signal, (chars) => onProgress?.({ phase: 'يكتب الأسئلة والبطاقات', chars }))
-    B = parseJson(r.text)
+  const gen = async (which: 'A' | 'B') => {
+    for (let i = 0; i < 2; i++) {
+      const phase = which === 'A' ? 'يكتب الشرح والملخصات' : 'يكتب الأسئلة والبطاقات'
+      onProgress?.({ phase })
+      const r = await ask(system, passages + (which === 'A' ? TEACH(s.title, symbolic, hits.length) : PRACTICE(s.title, symbolic, hits.length)), shots, note, signal, (chars) => onProgress?.({ phase, chars }))
+      const j = parseJson(r.text)
+      if (j && (which === 'A' ? j.steps : j.quiz)) {
+        if (which === 'A') model = r.model
+        return j
+      }
+    }
+    return null
   }
   const QT: QuestionType[] = ['mcq', 'tf', 'fill', 'short', 'reason', 'essay', 'problem']
-  const quiz: PackQuestion[] = keep(arr(B?.quiz).map((o): PackQuestion | null => {
-    const type = QT.find((t) => t === o.type)
-    const level = (['easy', 'medium', 'hard'] as const).find((t) => t === o.level) ?? 'medium'
-    const q = str(o.q)
-    let answer = str(o.answer)
-    const n = nOf(o, o.answer, o.q)
-    if (!type || !q || !answer || !n || !grounded(n, answer, q)) return null
-    let options: string[] | undefined
-    if (type === 'mcq') {
-      options = Array.isArray(o.options) ? [...new Set((o.options as unknown[]).map(str))].filter(Boolean) : []
-      const hit = options.find((x) => normalize(x) === normalize(answer))
-      if (options.length < 3 || !hit) return null
-      answer = hit
-      options = options.map((v) => ({ v, r: Math.random() })).sort((a, b) => a.r - b.r).map((x) => x.v)
-    }
-    if (type === 'tf') {
-      if (!['صح', 'خطا'].includes(normalize(answer))) return null
-      answer = normalize(answer) === 'صح' ? 'صح' : 'خطأ'
-      options = ['صح', 'خطأ']
-    }
-    if (type === 'fill' && !/_{2,}|…|\.{3,}/.test(q)) return null
-    return { type, level, q, ...(options ? { options } : {}), answer, why: clean(o.why), n }
-  }).filter((x): x is PackQuestion => !!x), () => true)
   const CT: CardType[] = ['term', 'law', 'question', 'fact', 'example']
-
-  const cited = new Set<number>()
-  const pack: LessonPack = {
-    v: 1, bookId: l.bookId, sectionId: s.id, title: s.title, bookTitle: l.bookTitle, subject: l.subject, from: s.page, to: s.endPage, model, at: Date.now(),
-    cites: [], seen: seenPages, unseen: [...plan.bad.filter((p) => !seenPages.includes(p)), ...plan.rest].sort((a, b) => a - b),
-    steps,
-    summary: { full: clean(sum.full), short: clean(sum.short), final: clean(sum.final) },
-    guide: clean(A.guide),
-    terms: keep(arr(A.terms).map((x) => ({ term: str(x.term), def: clean(x.def), n: nOf(x, x.term, x.def) })), (x) => !!x.term && !!x.def && grounded(x.n, x.term, x.def)),
-    laws: keep(arr(A.laws).map((x) => ({ name: str(x.name), formula: str(x.formula), meaning: clean(x.meaning), n: nOf(x, x.name, x.meaning) })), (x) => !!x.name && grounded(x.n, x.name, x.formula, x.meaning)),
-    points: Array.isArray(A.points) ? (A.points as unknown[]).map(clean).filter((p) => /\[\d+\]/.test(p)) : [],
-    mistakes: keep(arr(A.mistakes).map((x) => ({ mistake: str(x.mistake), fix: clean(x.fix), n: nOf(x, x.fix, x.mistake) })), (x) => !!x.mistake && !!x.fix && !!x.n),
-    mindmap: mind ? { label: s.title, children: walk(mind.children, 1) } : undefined,
+  const fromA = (A: Record<string, unknown>) => {
+    const steps: PackStep[] = keep(arr(A.steps).map((x) => {
+      const c = x.check as Record<string, unknown> | undefined
+      const opts = Array.isArray(c?.options) ? [...new Set((c!.options as unknown[]).map(str))].filter(Boolean) : []
+      const answer = str(c?.answer)
+      // خيارات لا تطابق الإجابة: يبقى السؤال بإجابة حرة بدلاً من حذفه
+      const hit = opts.length >= 3 ? opts.find((o) => normalize(o) === normalize(answer)) : undefined
+      const cn = c ? nOf(c, c.q, answer) : undefined
+      const check = c && str(c.q) && answer ? { q: str(c.q), answer: hit ?? answer, ...(hit ? { options: opts } : {}), ...(cn ? { n: cn } : {}) } : undefined
+      return { title: str(x.title), text: clean(x.text), ...(check?.answer ? { check } : {}) }
+    }), (x) => !!x.title && /\[\d+\]/.test(x.text))
+    const sum = (A.summary ?? {}) as Record<string, unknown>
+    const walk = (v: unknown, depth: number): PackNode[] =>
+      depth > 4 ? [] : arr(v).flatMap((o) => {
+        const label = str(o.label)
+        const n = nOf(o, o.label)
+        const children = walk(o.children, depth + 1)
+        if (!label || (!children.length && !grounded(n, label))) return []
+        return [{ label, ...(n ? { n } : {}), ...(children.length ? { children } : {}) }]
+      })
+    const mind = A.mindmap as Record<string, unknown> | undefined
+    return {
+      steps,
+      summary: { full: clean(sum.full), short: clean(sum.short), final: clean(sum.final) },
+      guide: clean(A.guide),
+      terms: keep(arr(A.terms).map((x) => ({ term: str(x.term), def: clean(x.def), n: nOf(x, x.term, x.def) })), (x) => !!x.term && !!x.def && grounded(x.n, x.term, x.def)),
+      laws: keep(arr(A.laws).map((x) => ({ name: str(x.name), formula: str(x.formula), meaning: clean(x.meaning), n: nOf(x, x.name, x.meaning) })), (x) => !!x.name && grounded(x.n, x.name, x.formula, x.meaning)),
+      points: Array.isArray(A.points) ? (A.points as unknown[]).map(clean).filter((p) => /\[\d+\]/.test(p)) : [],
+      mistakes: keep(arr(A.mistakes).map((x) => ({ mistake: str(x.mistake), fix: clean(x.fix), n: nOf(x, x.fix, x.mistake) })), (x) => !!x.mistake && !!x.fix && !!x.n),
+      mindmap: mind ? { label: s.title, children: walk(mind.children, 1) } : undefined,
+    }
+  }
+  const fromB = (B: Record<string, unknown> | null) => ({
     qa: keep(arr(B?.qa).map((x) => ({ q: str(x.q), a: clean(x.a), n: nOf(x, x.a, x.q) })), (x) => !!x.q && !!x.a && grounded(x.n, x.a, x.q)),
     cards: keep(arr(B?.cards).map((x) => ({ front: str(x.front), back: str(x.back), type: CT.find((t) => t === x.type) ?? 'fact', n: nOf(x, x.back, x.front) ?? 0 })), (x) => !!x.front && !!x.back && grounded(x.n, x.front, x.back)),
-    quiz,
+    quiz: keep(arr(B?.quiz).map((o): PackQuestion | null => {
+      const type = QT.find((t) => t === o.type)
+      const level = (['easy', 'medium', 'hard'] as const).find((t) => t === o.level) ?? 'medium'
+      const q = str(o.q)
+      let answer = str(o.answer)
+      const n = nOf(o, o.answer, o.q)
+      if (!type || !q || !answer || !n || !grounded(n, answer, q)) return null
+      let options: string[] | undefined
+      if (type === 'mcq') {
+        options = Array.isArray(o.options) ? [...new Set((o.options as unknown[]).map(str))].filter(Boolean) : []
+        const hit = options.find((x) => normalize(x) === normalize(answer))
+        if (options.length < 3 || !hit) return null
+        answer = hit
+        options = options.map((v) => ({ v, r: Math.random() })).sort((x, y) => x.r - y.r).map((x) => x.v)
+      }
+      if (type === 'tf') {
+        if (!['صح', 'خطا'].includes(normalize(answer))) return null
+        answer = normalize(answer) === 'صح' ? 'صح' : 'خطأ'
+        options = ['صح', 'خطأ']
+      }
+      if (type === 'fill' && !/_{2,}|…|\.{3,}/.test(q)) return null
+      return { type, level, q, ...(options ? { options } : {}), answer, why: clean(o.why), n }
+    }).filter((x): x is PackQuestion => !!x), () => true),
     worksheet: keep(arr(B?.worksheet).map((x) => ({ type: QT.find((t) => t === x.type) ?? 'short', q: str(x.q), answer: clean(x.answer), n: nOf(x, x.answer, x.q) ?? 0 })), (x) => !!x.q && !!x.answer && grounded(x.n, x.answer, x.q)),
-  }
-  // المقاطع المستشهد بها فقط تُحفظ مع الحزمة
-  const scan = (t: string) => [...t.matchAll(/\[(\d+)\]/g)].forEach((m) => cited.add(Number(m[1])))
-  const mark = (n?: number) => n && cited.add(n)
-  pack.steps.forEach((x) => (scan(x.text), mark(x.check?.n)))
-  Object.values(pack.summary).forEach(scan)
-  scan(pack.guide)
-  pack.points.forEach(scan)
-  ;[...pack.terms, ...pack.laws, ...pack.mistakes, ...pack.qa, ...pack.cards, ...pack.quiz, ...pack.worksheet].forEach((x) => mark(x.n))
-  pack.qa.forEach((x) => scan(x.a))
-  const walkMark = (x?: PackNode) => (x ? (mark(x.n), x.children?.forEach(walkMark)) : undefined)
-  walkMark(pack.mindmap)
-  pack.cites = [...cited].sort((a, b) => a - b).map((n): PackCite => {
-    const h = hits[n - 1]
-    return { n, page: h.page, chunk: h.i, quote: h.text.length > 360 ? `${h.text.slice(0, 360)}…` : h.text, ...(h.printed ? { printed: h.printed } : {}), ...(h.ocr ? { ocr: true } : {}), ...(h.weak ? { weak: true } : {}) }
   })
-  return { pack, dropped }
+  const assemble = (a: ReturnType<typeof fromA>, b: ReturnType<typeof fromB>): LessonPack => {
+    const pack: LessonPack = {
+      v: 1, bookId: l.bookId, sectionId: s.id, title: s.title, bookTitle: l.bookTitle, subject: l.subject, from: s.page, to: s.endPage, model, at: Date.now(),
+      cites: [], seen: seenPages, unseen: [...plan.bad.filter((p) => !seenPages.includes(p)), ...plan.rest].sort((x, y) => x - y),
+      ...a, ...b,
+    }
+    // المقاطع المستشهد بها (في أي نص أو بند) فقط تُحفظ مع الحزمة
+    const cited = new Set<number>()
+    for (const m of JSON.stringify({ ...pack, cites: undefined }).matchAll(/\[(\d+)\]/g)) if (Number(m[1]) >= 1 && Number(m[1]) <= max) cited.add(Number(m[1]))
+    const mark = (n?: number) => n && cited.add(n)
+    pack.steps.forEach((x) => mark(x.check?.n))
+    ;[...pack.terms, ...pack.laws, ...pack.mistakes, ...pack.qa, ...pack.cards, ...pack.quiz, ...pack.worksheet].forEach((x) => mark(x.n))
+    const walkMark = (x?: PackNode) => (x ? (mark(x.n), x.children?.forEach(walkMark)) : undefined)
+    walkMark(pack.mindmap)
+    pack.cites = [...cited].sort((x, y) => x - y).map((n): PackCite => {
+      const h = hits[n - 1]
+      return { n, page: h.page, chunk: h.i, quote: h.text.length > 360 ? `${h.text.slice(0, 360)}…` : h.text, ...(h.printed ? { printed: h.printed } : {}), ...(h.ocr ? { ocr: true } : {}), ...(h.weak ? { weak: true } : {}) }
+    })
+    return pack
+  }
+  const A_TOOLS = ['الشرح', 'أسئلة الفهم في الشرح', 'الملخصات', 'دليل الدراسة', 'المصطلحات والقوانين', 'أهم النقاط', 'الأخطاء الشائعة', 'الخريطة الذهنية']
+  const reused = !!existing && !reviewPack(existing).missing.length
+  let pack: LessonPack
+  let review: PackReview
+  if (reused) {
+    // نسخة عميقة: تُضاف العلامات دون المساس بالأصل
+    pack = JSON.parse(JSON.stringify({ ...existing, status: undefined, updated: undefined, review: undefined })) as LessonPack
+    for (const x of [...pack.quiz, ...pack.worksheet]) delete x.flag
+    review = reviewPack(pack)
+  } else {
+  const rawA = await gen('A')
+  if (!rawA) throw new Error('parse')
+  let a = fromA(rawA)
+  if (!a.steps.length) throw new Error('steps')
+  let b = fromB(await gen('B'))
+  pack = assemble(a, b)
+  review = reviewPack(pack)
+  // محاولة واحدة لإكمال الناقص: يُعاد الطلب المسؤول عنه فقط، وتُبقى النسخة الأكمل
+  const missA = review.missing.filter((m) => A_TOOLS.includes(m)).length
+  const missB = review.missing.length - missA
+  if (missA) {
+    const again = await gen('A')
+    if (again) {
+      const a2 = fromA(again)
+      const p2 = assemble(a2, b)
+      if (reviewPack(p2).missing.length < review.missing.length) [a, pack, review] = [a2, p2, reviewPack(p2)]
+    }
+  }
+  if (missB) {
+    const again = await gen('B')
+    if (again) {
+      const b2 = fromB(again)
+      const p2 = assemble(a, b2)
+      if (reviewPack(p2).missing.length < review.missing.length) [b, pack, review] = [b2, p2, reviewPack(p2)]
+    }
+  }
+  }
+  // الرياضيات: حل مستقل لكل سؤال ثم مقارنة برمجية؛ والمسائل في المواد العلمية الأخرى تُعلَّم لأنها لم تُتحقق آلياً
+  let verified: 'independent' | 'none' = 'none'
+  if (l.subject === 'الرياضيات') {
+    const items = itemsToSolve(pack)
+    if (items.length) {
+      onProgress?.({ phase: 'يتحقق من الحلول بحل مستقل' })
+      const r = await ask(system, passages + SOLVE_ASK(items), shots, note, signal)
+      const j = parseJson(r.text)
+      const list = Array.isArray(j?.answers) ? (j!.answers as Record<string, unknown>[]) : []
+      const finals = items.map((_, i) => str(list.find((x) => Number(x?.i) === i + 1)?.final))
+      if (finals.some(Boolean)) {
+        applyVerdicts(pack, items, finals)
+        verified = 'independent'
+      }
+    }
+  } else if (symbolic)
+    for (const x of [...pack.quiz, ...pack.worksheet]) if (x.type === 'problem') x.flag = 'مسألة لم يُتحقق من حلها آلياً؛ راجع الناتج في صفحة الكتاب.'
+  review = reviewPack(pack, verified)
+  pack.review = review
+  return { pack, dropped, reused }
 }
 
 export const uploadPack = (pack: LessonPack) => api<{ ok: boolean; parts: string[] }>(`/admin/lessons/${encodeURIComponent(pack.bookId)}/${encodeURIComponent(pack.sectionId)}`, { method: 'PUT', body: { pack } })

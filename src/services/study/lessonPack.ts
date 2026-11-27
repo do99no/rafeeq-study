@@ -36,6 +36,20 @@ export interface PackQuestion {
   answer: string
   why: string
   n: number
+  /** نتيجة لم تثبت بالحل المستقل: تحتاج مراجعة */
+  flag?: string
+}
+/** نتيجة فحص الحزمة قبل اعتبار الدرس جاهزاً */
+export interface PackReview {
+  /** أدوات ناقصة أو أقل من الحد الأدنى */
+  missing: string[]
+  /** استشهادات أو إجابات غير صالحة */
+  issues: string[]
+  /** بنود عليها علامة «تحتاج مراجعة» */
+  flagged: number
+  /** كيف تُحقق من حلول المسائل */
+  verified: 'independent' | 'none'
+  at: number
 }
 export interface PackNode {
   label: string
@@ -65,10 +79,11 @@ export interface LessonPack {
   points: string[]
   mistakes: { mistake: string; fix: string; n?: number }[]
   mindmap?: PackNode
-  qa: { q: string; a: string; n?: number }[]
-  cards: { front: string; back: string; type: CardType; n: number }[]
+  qa: { q: string; a: string; n?: number; flag?: string }[]
+  cards: { front: string; back: string; type: CardType; n: number; flag?: string }[]
   quiz: PackQuestion[]
-  worksheet: { type: QuestionType; q: string; answer: string; n: number }[]
+  worksheet: { type: QuestionType; q: string; answer: string; n: number; flag?: string }[]
+  review?: PackReview
   /** حالة المراجعة كما يحددها المسؤول */
   status?: 'ai' | 'reviewed' | 'hidden'
   updated?: number
@@ -244,13 +259,13 @@ export function toolData(p: LessonPack, t: PackTool): OutputData {
       const walk = (x: PackNode): MindNode => ({ label: x.label, ...(citeOf(p, x.n) ? { cite: citeOf(p, x.n) } : {}), ...(x.children?.length ? { children: x.children.map(walk) } : {}) })
       return { kind: 'mindmap', root: { ...walk(p.mindmap ?? { label: p.title }), label: p.title } }
     }
-    case 'cards': return { kind: 'cards', known: [], cards: p.cards.map((c, i): Flashcard => ({ id: String(i + 1), front: c.front, back: c.back, type: c.type, cite: citeOf(p, c.n) })) }
+    case 'cards': return { kind: 'cards', known: [], cards: p.cards.map((c, i): Flashcard => ({ id: String(i + 1), front: c.front, back: c.back, type: c.type, cite: citeOf(p, c.n), ...(c.flag ? { flag: c.flag } : {}) })) }
     case 'worksheet': return {
       kind: 'quiz',
       meta: { mode: 'worksheet', subject: p.subject, lessons: [p.title] },
       questions: p.worksheet.flatMap((w): QuizQuestion[] => {
         const cite = citeOf(p, w.n)
-        return cite ? [{ type: w.type, q: w.q, answer: w.answer, why: '', cite, origin: 'ورقة عمل من إعداد رفيق' }] : []
+        return cite ? [{ type: w.type, q: w.q, answer: w.answer, why: '', cite, origin: 'ورقة عمل من إعداد رفيق', ...(w.flag ? { flag: w.flag } : {}) }] : []
       }),
     }
     default: {
@@ -260,9 +275,40 @@ export function toolData(p: LessonPack, t: PackTool): OutputData {
         meta: { mode: 'exam', subject: p.subject, level, lessons: [p.title] },
         questions: p.quiz.filter((q) => q.level === level).flatMap((q): QuizQuestion[] => {
           const cite = citeOf(p, q.n)
-          return cite ? [{ type: q.type, q: q.q, options: q.options, answer: q.answer, why: q.why, cite }] : []
+          return cite ? [{ type: q.type, q: q.q, options: q.options, answer: q.answer, why: q.why, cite, ...(q.flag ? { flag: q.flag } : {}) }] : []
         }),
       }
     }
   }
 }
+
+/** الحد الأدنى لكل أداة كي يُعدّ الدرس جاهزاً */
+export function reviewPack(p: LessonPack, verified: PackReview['verified'] = p.review?.verified ?? 'none'): PackReview {
+  const missing: string[] = []
+  const need = (ok: boolean, name: string) => !ok && missing.push(name)
+  need(p.steps.length >= 2 && p.steps.every((s) => s.text.length > 80), 'الشرح')
+  need(p.steps.filter((s) => s.check).length >= Math.min(2, p.steps.length), 'أسئلة الفهم في الشرح')
+  need(!!p.summary.full && !!p.summary.short && !!p.summary.final, 'الملخصات')
+  need(!!p.guide, 'دليل الدراسة')
+  need(p.terms.length + p.laws.length >= 1, 'المصطلحات والقوانين')
+  need(p.points.length >= 2, 'أهم النقاط')
+  need(p.mistakes.length >= 1, 'الأخطاء الشائعة')
+  need((p.mindmap?.children?.length ?? 0) >= 2, 'الخريطة الذهنية')
+  need(p.qa.length >= 3, 'سؤال وجواب')
+  need(p.cards.length >= 5, 'البطاقات')
+  for (const [l, name] of [['easy', 'الاختبار السهل'], ['medium', 'الاختبار المتوسط'], ['hard', 'الاختبار الصعب']] as const) need(p.quiz.filter((q) => q.level === l).length >= 3, name)
+  need(p.worksheet.length >= 3, 'ورقة العمل')
+  const issues: string[] = []
+  const cited = new Set(p.cites.map((c) => c.n))
+  for (const c of p.cites) if (c.page < p.from || c.page > p.to) issues.push(`استشهاد [${c.n}] خارج صفحات الدرس (ص ${c.page})`)
+  const texts = [...p.steps.map((s) => s.text), ...Object.values(p.summary), p.guide, ...p.points, ...p.qa.map((x) => x.a), ...p.terms.map((x) => x.def), ...p.mistakes.map((x) => x.fix)]
+  for (const t of texts) for (const m of t.matchAll(/\[(\d+)\]/g)) if (!cited.has(Number(m[1]))) issues.push(`رقم استشهاد [${m[1]}] بلا مقطع`)
+  for (const x of [...p.quiz, ...p.cards, ...p.worksheet]) if (!cited.has(x.n)) issues.push('بند بلا مصدر')
+  for (const q of p.quiz) {
+    if (q.type === 'mcq' && !q.options?.includes(q.answer)) issues.push('إجابة اختيار ليست بين الخيارات')
+    if (q.type === 'tf' && !['صح', 'خطأ'].includes(q.answer)) issues.push('إجابة صح وخطأ غير صالحة')
+  }
+  const flagged = [...p.quiz, ...p.worksheet, ...p.cards, ...p.qa].filter((x) => x.flag).length
+  return { missing, issues: [...new Set(issues)], flagged, verified, at: Date.now() }
+}
+export const packOk = (r?: PackReview) => !!r && !r.missing.length && !r.issues.length

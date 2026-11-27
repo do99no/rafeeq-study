@@ -116,6 +116,8 @@ export interface QuizQuestion {
   pageTask?: boolean
   /** صفحة في ملف خارجي (مصدر حكومي لا يُعاد نشره): تُفتح برابطها، ولا تصحيح آلي لها */
   link?: string
+  /** الإجابة لم تثبت بالتحقق المستقل: تُعرض مع تنبيه بأنها تحتاج مراجعة */
+  flag?: string
 }
 /** امتحان أو ورقة عمل أو اختبار مختلط من بنك الأسئلة */
 export interface ExamMeta {
@@ -144,6 +146,8 @@ export interface Flashcard {
   due?: number
   hard?: boolean
   manual?: boolean
+  /** لم يثبت بالتحقق المستقل */
+  flag?: string
 }
 export interface MindNode {
   label: string

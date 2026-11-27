@@ -215,6 +215,7 @@ export function CardsView({ outputId, cards: raw, known }: { outputId: string; c
         </small>
         <span className="flash-text">
           <Inline text={flipped ? card.back : card.front} />
+          {flipped && card.flag && <small className="flash-more warn">تحتاج مراجعة: {card.flag}</small>}
           {flipped && card.extra && (
             <small className="flash-more">
               <Inline text={card.extra} />
