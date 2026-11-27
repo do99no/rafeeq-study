@@ -80,6 +80,12 @@ async function summary(DB, id, full = false) {
   for (const m of core?.mistakes ?? []) if (!m.resolved) weak[m.topic] = { topic: m.topic, book: m.bookTitle, n: (weak[m.topic]?.n ?? 0) + 1, last: Math.max(weak[m.topic]?.last ?? 0, m.at) }
   const last = real[0]
   const planRow = await one(DB, 'SELECT json FROM plans WHERE user_id = ?', id)
+  const login = await one(DB, 'SELECT last, n FROM logins WHERE user_id = ?', id)
+  const activities = (await one(DB, "SELECT COUNT(*) AS n FROM events WHERE user_id = ? AND type IN ('explain', 'explain_done', 'teach', 'answer_right', 'answer_wrong', 'answer_partial', 'quiz_done', 'summary', 'cards', 'cards_review', 'weak_revisit', 'read_page', 'paragraph', 'lesson_open')", id))?.n ?? 0
+  // تقدم كل كتاب: الدروس المكتملة من الدروس التي درسها، ووقته
+  const titleOf = (bid) => (core?.books ?? []).find((b) => b.id === bid)?.title ?? bid
+  const perBook = Object.values(ls.reduce((m, l) => { const k = l.bookId; m[k] ??= { book: titleOf(k), lessons: 0, done: 0, review: 0, ms: 0 }; m[k].lessons++; if (l.done) m[k].done++; if (l.review) m[k].review++; return m }, {}))
+  for (const r of times) { const b = perBook.find((x) => x.book === r.book); if (b) b.ms += r.active_ms }
   const plan = planRow ? JSON.parse(planRow.json) : null
 
   // الالتزام: نسبة الهدف اليومي المتحقق في آخر 7 أيام
@@ -132,6 +138,11 @@ async function summary(DB, id, full = false) {
     insights,
     synced: coreRow?.updated ?? null,
     training: training(core),
+    studyDays: new Set(times.filter((r) => r.active_ms > 0).map((r) => r.day)).size,
+    lastLogin: login?.last ?? null,
+    logins: login?.n ?? 0,
+    activities,
+    perBook,
   }
   if (!full) return out
   const daily = Array.from({ length: 30 }, (_, i) => dayOf(now - (29 - i) * DAY)).map((d) => ({ day: d, ms: byDay[d] ?? 0 }))

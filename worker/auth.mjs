@@ -176,6 +176,7 @@ export async function login(b, env, request) {
   const expires = now + SESSION_DAYS * 86400_000
   await DB.batch([
     DB.prepare('UPDATE users SET failed = 0, locked_until = 0 WHERE id = ?').bind(u.id),
+    DB.prepare('INSERT INTO logins (user_id, last, n) VALUES (?, ?, 1) ON CONFLICT(user_id) DO UPDATE SET last = excluded.last, n = n + 1').bind(u.id, now),
     DB.prepare('INSERT INTO sessions (id, user_id, created, expires, seen) VALUES (?, ?, ?, ?, ?)').bind(await sha256(token), u.id, now, expires, now),
     DB.prepare('DELETE FROM sessions WHERE expires < ?').bind(now),
   ])

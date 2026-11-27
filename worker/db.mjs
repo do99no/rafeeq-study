@@ -16,6 +16,9 @@ export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, at INTEGER NOT NULL, type TEXT NOT NULL, subject TEXT, book TEXT, lesson TEXT, detail TEXT, session_id TEXT, queued INTEGER NOT NULL DEFAULT 0)`,
   `CREATE INDEX IF NOT EXISTS events_user ON events(user_id, at)`,
   `CREATE TABLE IF NOT EXISTS plans (user_id TEXT PRIMARY KEY, json TEXT NOT NULL, updated INTEGER NOT NULL)`,
+  // آخر لحظة احتُسب حتى نهايتها وقت دراسة للطالب: يمنع احتساب الوقت مرتين من تبويبين أو جهازين
+  `CREATE TABLE IF NOT EXISTS logins (user_id TEXT PRIMARY KEY, last INTEGER NOT NULL, n INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS study_credit (user_id TEXT PRIMARY KEY, until INTEGER NOT NULL)`,
   // المجموعة المشتركة لمفاتيح الذكاء الاصطناعي (worker/keys.mjs)
   `CREATE TABLE IF NOT EXISTS ai_keys (id TEXT PRIMARY KEY, provider TEXT NOT NULL, label TEXT NOT NULL, owner TEXT NOT NULL DEFAULT 'unassigned', project TEXT NOT NULL DEFAULT '', source TEXT NOT NULL, env_name TEXT, enc TEXT, last4 TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'unknown', last_ok INTEGER, last_used INTEGER, last_error TEXT, last_error_at INTEGER, created INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS ai_quota (provider TEXT NOT NULL, project TEXT NOT NULL, cool_until INTEGER NOT NULL, reason TEXT NOT NULL, PRIMARY KEY (provider, project))`,

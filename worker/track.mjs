@@ -57,7 +57,11 @@ export async function beat(request, env, b, final = false) {
   const n = (x, max) => (Number.isFinite(x) && x > 0 ? Math.min(Math.round(x), max) : 0)
   // الحد الأعلى: الزمن المنقضي فعلاً على الخادم منذ آخر نبضة
   const cap = Math.min(now - s.last + SLACK_MS, MAX_BEAT_MS)
-  const active = n(b.activeMs, cap)
+  const claimed = n(b.activeMs, cap)
+  // تبويبان أو جهازان في الوقت نفسه: لا يُحتسب إلا الجزء الذي لم يُحتسب بعد من الفترة
+  const credit = (await one(DB, 'SELECT until FROM study_credit WHERE user_id = ?', u.id))?.until ?? 0
+  const from = Math.max(now - claimed, credit)
+  const active = Math.max(0, Math.min(claimed, now - from))
   const paused = n(b.pausedMs, 24 * 3600_000)
   const c = ctxOf(b.context)
   const tasks = JSON.parse(s.tasks || '{}')
@@ -68,6 +72,7 @@ export async function beat(request, env, b, final = false) {
         (final ? ', end = ?, end_reason = ?' : '') + ' WHERE id = ?',
     ).bind(now, b.seq, active, paused, n(b.hidden, 1000), n(b.returns, 1000), n(b.offline, 1000), n(b.idle, 1000), JSON.stringify(tasks), c.subject, c.bookId, c.book, c.lesson, ...(final ? [now, clip(b.reason, 20) ?? 'left'] : []), b.id),
   ]
+  if (active) stmts.push(DB.prepare('INSERT INTO study_credit (user_id, until) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET until = MAX(until, excluded.until)').bind(u.id, now))
   if (active) stmts.push(DB.prepare('INSERT INTO study_time (user_id, day, subject, book, lesson, active_ms) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, day, subject, book, lesson) DO UPDATE SET active_ms = active_ms + excluded.active_ms').bind(u.id, dayOf(now), c.subject ?? s.subject ?? '', c.book ?? s.book ?? '', c.lesson ?? s.lesson ?? '', active))
   await DB.batch(stmts)
   return { ok: true, accepted: active }

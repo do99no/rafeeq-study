@@ -36,6 +36,11 @@ interface Summary {
   insights: { kind: string; text: string; topics?: string[] }[]
   synced: number | null
   training?: { worksheets: number; examAttempts: number; mixed: number; bank: number }
+  studyDays?: number
+  lastLogin?: number | null
+  logins?: number
+  activities?: number
+  perBook?: { book: string; lessons: number; done: number; review: number; ms: number }[]
 }
 interface Detail extends Summary {
   daily: { day: string; ms: number }[]
@@ -143,6 +148,9 @@ function StudentCard({ s }: { s: Summary }) {
         <Stat label="آخر 7 أيام" value={dur(s.weekMs)} />
         <Stat label="هذا الشهر" value={dur(s.monthMs)} />
         <Stat label="الإجمالي الفعلي" value={dur(s.totalMs)} />
+        <Stat label="أيام الدراسة" value={num(s.studyDays ?? 0)} />
+        <Stat label="آخر دخول" value={s.lastLogin ? when(s.lastLogin) : '—'} hint={s.logins ? `${num(s.logins)} مرات دخول` : undefined} />
+        <Stat label="أنشطة تعليمية" value={num(s.activities ?? 0)} />
         <Stat label="جلسات الدراسة" value={num(s.sessions)} hint={s.sessions ? `متوسطها ${dur(s.avgSessionMs)}` : undefined} />
         <Stat label="إخفاء الصفحة / عودة" value={`${num(s.hidden)} / ${num(s.returns)}`} />
         <Stat label="انقطاع الاتصال" value={num(s.offline)} />
@@ -283,6 +291,20 @@ function SummaryTab({ d }: { d: Detail }) {
       <section className="panel">
         <h3 className="mini-h">تطور النتائج</h3>
         <Trend data={d.trend} />
+      </section>
+      <section className="panel">
+        <h3 className="mini-h">التقدم في كل كتاب</h3>
+        {!d.perBook?.length && <p className="muted">لم يدرس درساً بعد.</p>}
+        <ul className="admin-list">
+          {d.perBook?.map((b) => (
+            <li key={b.book}>
+              <bdi className="grow">{b.book}</bdi>
+              <small className="muted">
+                {num(b.done)} مكتمل من {num(b.lessons)} درساً درسها{b.review ? ` · ${num(b.review)} تحتاج مراجعة` : ''} · {dur(b.ms)}
+              </small>
+            </li>
+          ))}
+        </ul>
       </section>
       <section className="panel">
         <h3 className="mini-h">الدروس</h3>
