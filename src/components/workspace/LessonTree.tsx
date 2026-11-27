@@ -5,6 +5,7 @@ import { isSearchable, useDocs } from '../../services/books/process'
 import { packOf, usePacks } from '../../services/study/lessonPack'
 import { actions, useData } from '../../store/store'
 import { openPage } from '../../store/viewer'
+import { EXAM_SOURCE, removedFromExam } from '../../data/syllabus'
 import type { Book, Focus, Notebook } from '../../types'
 
 interface Props {
@@ -62,7 +63,10 @@ export function LessonTree({ notebook, books, off, onOff, onAdd, onPick }: Props
                 return (
                   <li key={s.id}>
                     <button className="lesson-row" data-level={s.level} aria-current={active ? 'true' : undefined} onClick={() => onPick(focusOf(b.id, s))}>
-                      <span className="grow">{s.title}</span>
+                      <span className="grow">
+                        {s.title}
+                        {removedFromExam(b.id, s.title) && <small className="off-exam" title={EXAM_SOURCE}> خارج امتحان ٢٠٢٥</small>}
+                      </span>
                       {st && (st.explained || st.taught || st.checks) ? <Check className="studied" aria-label="درسته" /> : packOf(b.id, s.id) ? <Sparkles className="ready" aria-label="محتوى جاهز" /> : null}
                     </button>
                   </li>

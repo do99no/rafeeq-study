@@ -14,6 +14,7 @@ import type { Book, Focus, Level, Message, Notebook, StudyOutput, Task } from '.
 import { RichText } from '../RichText'
 import { activity, logEvent, setTask } from '../../services/server/tracker'
 import { openPage } from '../../store/viewer'
+import { EXAM_SOURCE, removedFromExam } from '../../data/syllabus'
 import { classify } from '../../services/study/intent'
 import { LessonPicker } from './LessonPicker'
 import { citeOf, packOf, textWithCites, usePacks, type LessonPack, type PackTool } from '../../services/study/lessonPack'
@@ -396,6 +397,7 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
                     {books.find((b) => b.id === focus.bookId)?.title}، ص {num(focus.from)}
                     {focus.to > focus.from ? `–${num(focus.to)}` : ''}
                   </p>
+                  {focus.sectionId && removedFromExam(focus.bookId, focus.title) && <p className="hint">هذا الدرس محذوف من امتحان الشهادة لعام ٢٠٢٥ حسب {EXAM_SOURCE}. يمكنك دراسته، لكن لن تُسأل عنه في الامتحان.</p>}
                   {pack ? (
                     <>
                       <p className="ready-tag">
