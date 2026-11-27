@@ -245,14 +245,19 @@ export function packComplete(subject: string, i?: PackInfo) {
 const errataPage = (bookId: string, page: number) => ERRATA.some((e) => e.bookId === bookId && e.page === page)
 
 /** سؤال يصلح للبنك: يُفحص آلياً قبل المراجعة اليدوية */
-export function eligible(subject: string, p: LessonPack, x: LessonPack['quiz'][number]) {
+export function eligible(subject: string, p: LessonPack, x: LessonPack['quiz'][number], verified = false) {
   if (x.flag || (x.type !== 'mcq' && x.type !== 'tf')) return null
   const options = (x.options ?? []).map((o) => o.trim()).filter(Boolean)
   if (options.length < 2 || new Set(options).size !== options.length || !options.includes(x.answer.trim())) return null
+  // خيارات بحروف ترتيب (أ) ب)…) لا تصلح لأن الخيارات تُخلط لكل طالب
+  if (options.some((o) => /^[(]?[أابجدهـa-d][).]\s/.test(o))) return null
   if (x.type === 'tf' && !(options.length === 2 && options.includes('صح') && options.includes('خطأ')) && !/^(true|false)$/i.test(x.answer)) return null
   const c = p.cites.find((y) => y.n === x.n)
   if (!c || c.weak || !c.quote || errataPage(p.bookId, c.page)) return null
   // الإجابة واردة في مقطع الكتاب (أو السؤال مرتبط به في الرياضيات، وحلوله متحقق منها بحل مستقل)
+  // مسائل الدروس المتحقق منها بحل مستقل (الرياضيات، ومسائل العلوم): المقطع في صفحات الدرس يكفي، والمراجعة اليدوية تعيد الحل
+  const problem = subject === MATH || (SCIENCE.has(subject) && /[0-9٠-٩]/.test(x.q + x.answer))
+  if (problem && verified && c.page >= p.from && c.page <= p.to && x.why.trim().length >= 8) return { options, cite: c }
   const grounded = subject === MATH ? overlap(x.q, c.quote) >= 0.2 : x.type === 'mcq' ? overlap(x.answer, c.quote) >= 0.5 && overlap(x.q, c.quote) >= 0.2 : overlap(x.q, c.quote) >= 0.4
   if (!grounded || x.why.trim().length < 8) return null
   return { options, cite: c }
@@ -289,7 +294,7 @@ export function buildBank(subject: string, books: BankBook[], info: (b: string, 
       const pool: BankItem[] = []
       if (ok)
         for (const x of p.quiz) {
-          const e = eligible(subject, p, x)
+          const e = eligible(subject, p, x, !!info(b.id, s.id)?.parts.includes('verified'))
           if (!e) continue
           const id = itemId(b.id, s.id, x.q)
           if (rev.rejected[id]) continue
