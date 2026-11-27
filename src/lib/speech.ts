@@ -163,19 +163,21 @@ if (synth) synth.addEventListener?.('voiceschanged', () => voices())
 
 /** ترتيب الجودة: الأصوات الطبيعية أولاً (Edge: Online Natural، وأندرويد: Google)، ثم المحلية */
 const quality = (v: SpeechSynthesisVoice) => (/natural/i.test(v.name) ? 0 : /online|neural|wavenet/i.test(v.name) ? 1 : /google/i.test(v.name) ? 2 : v.localService ? 4 : 3)
-export function bestVoice(lang: 'ar' | 'en', preferred?: string) {
+export function bestVoice(lang: 'ar' | 'en', preferred?: string, region = /SA|EG|SD/i) {
   const list = voices().filter((v) => v.lang.toLowerCase().startsWith(lang))
   if (preferred) {
     const p = list.find((v) => v.voiceURI === preferred || v.name === preferred)
     if (p) return p
   }
-  return [...list].sort((a, b) => quality(a) - quality(b) || (lang === 'ar' ? Number(!/SA|EG|SD/i.test(a.lang)) - Number(!/SA|EG|SD/i.test(b.lang)) : 0))[0] ?? null
+  return [...list].sort((a, b) => quality(a) - quality(b) || (lang === 'ar' ? Number(!region.test(a.lang)) - Number(!region.test(b.lang)) : 0))[0] ?? null
 }
 export const arabicVoices = () => voices().filter((v) => v.lang.toLowerCase().startsWith('ar')).sort((a, b) => quality(a) - quality(b))
 
 export interface SpeakOptions {
   rate?: number
   voice?: string
+  /** المنطوق بلمسة مصرية: يُفضَّل صوت ar-EG */
+  egyptian?: boolean
   onEnd?: () => void
 }
 let token = 0
@@ -185,7 +187,7 @@ export function speak(md: string, o: SpeakOptions = {}) {
   synth.cancel()
   const my = ++token
   const chunks = speechChunks(speechText(md))
-  const ar = bestVoice('ar', o.voice)
+  const ar = bestVoice('ar', o.voice, o.egyptian ? /EG/i : undefined)
   const en = bestVoice('en')
   const rate = o.rate ?? 0.92
   let i = 0

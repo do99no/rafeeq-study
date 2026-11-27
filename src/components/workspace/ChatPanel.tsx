@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { canSpeak, speak as speakText, stopSpeaking } from '../../lib/speech'
+import { cachedSpoken, spokenScript } from '../../services/study/spoken'
 import { ArrowUp, BookOpenCheck, BookOpenText, BookPlus, Sparkles, WandSparkles, Check, CircleHelp, Copy, GraduationCap, Layers, ListChecks, LoaderCircle, NotebookPen, RotateCcw, Square, Target, Volume2, VolumeX, X } from 'lucide-react'
 import { num } from '../../lib/format'
 import { onAsk, takeAsk } from '../../lib/study'
@@ -292,7 +293,15 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
     if (speaking === m.id) return (stopSpeaking(), setSpeaking(null))
     const s = getState().data.settings
     setSpeaking(m.id)
-    speakText(m.text, { voice: s.voice, rate: s.rate, onEnd: () => setSpeaking(null) })
+    const done = () => setSpeaking((x) => (x === m.id ? null : x))
+    // الشرح الصوتي بأسلوب المدرس (نص منطوق مستقل عن المكتوب)، والفصحى كما كُتبت إن اختارها الطالب أو تعذّرت الخدمة
+    if ((s.voiceStyle ?? 'teacher') === 'fusha') return speakText(m.text, { voice: s.voice, rate: s.rate, onEnd: done })
+    const c = new AbortController()
+    if (!cachedSpoken(m.id)) toast('يجهّز رفيق الشرح الصوتي…')
+    void spokenScript(m.id, m.text, c.signal).then((script) => {
+      if (script === null && !cachedSpoken(m.id)) toast('تعذّر تجهيز الشرح الصوتي الآن، فيُقرأ النص كما هو مكتوب.')
+      speakText(script ?? m.text, { voice: s.voice, rate: s.rate, egyptian: !!script, onEnd: done })
+    })
   }
 
   /** الخطوة التعليمية التالية حسب آخر رد */

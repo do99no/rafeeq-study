@@ -29,6 +29,14 @@ export function VoiceSettings() {
         <p className="muted">لا يوجد صوت عربي في هذا الجهاز أو المتصفح. على أندرويد ثبّت «خدمات Google للتحويل من نص إلى كلام» وفعّل العربية، وعلى الكمبيوتر يوفر متصفح Edge أصواتاً عربية طبيعية مجاناً.</p>
       ) : (
         <>
+          <div className="field">
+            <span>أسلوب الشرح الصوتي</span>
+            <div className="segmented" role="group" aria-label="أسلوب الشرح الصوتي">
+              <button aria-pressed={(s.voiceStyle ?? 'teacher') === 'teacher'} onClick={() => actions.setSettings({ voiceStyle: 'teacher' })}>مدرس بلغة سهلة</button>
+              <button aria-pressed={s.voiceStyle === 'fusha'} onClick={() => actions.setSettings({ voiceStyle: 'fusha' })}>الفصحى كما هي مكتوبة</button>
+            </div>
+            <small className="muted">المكتوب يبقى بالفصحى دائماً. أسلوب المدرس: عربية بيضاء سهلة بلمسة مصرية خفيفة، تُجهَّز مرة لكل رد، والمصطلحات والأرقام كما هي، ونصوص الكتاب والآيات تُقرأ حرفياً.</small>
+          </div>
           <label className="field">
             <span>الصوت</span>
             <select className="input" value={current?.voiceURI ?? ''} onChange={(e) => actions.setSettings({ voice: e.target.value })}>
