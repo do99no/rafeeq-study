@@ -10,7 +10,7 @@
 .ws-side h2 { padding-inline: 1.1rem; font-size: 1rem; margin-bottom: 0.75rem; }
 .ws-side .ws-panel-body { padding: 0 1.1rem 1.1rem; overflow-y: auto; flex: 1; min-height: 0; }
 @media (min-width: 1180px) {
-  .ws { grid-template-columns: 17rem minmax(0, 1fr) 17rem; }
+  .ws { grid-template-columns: 17rem minmax(0, 1fr); }
   .ws-head { grid-column: 1 / -1; }
   .chat { border-inline: 1px solid var(--line); }
 }
@@ -118,7 +118,9 @@ button.mm-node { min-height: 44px; }
 .ws-tabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; min-width: 0; white-space: nowrap; }
 .ws-tabs button svg { width: 1rem; height: 1rem; flex: none; }
 @media (max-width: 380px) { .ws-tabs button { font-size: 0.82rem; padding-inline: 0.3rem; } .ws-tabs button svg { display: none; } }
-@media (min-width: 1180px) { .ws { grid-template-columns: 19rem minmax(0, 1fr) 18rem; } }
+@media (min-width: 1180px) { .ws { grid-template-columns: 19rem minmax(0, 1fr); } }
+.ws-drawer { padding-top: 0; }
+.ws-drawer .ws-panel-body { padding: 0; }
 
 .tree { display: flex; flex-direction: column; gap: 0.6rem; }
 .tree-book { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); }

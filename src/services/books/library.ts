@@ -3,6 +3,7 @@ import { actions, getState } from '../../store/store'
 import { load, save } from '../storage/local'
 import { deleteVectors, hasPdf } from './db'
 import { getDocs, restoreDoc } from './process'
+import { subjectAllowed } from '../../lib/subjects'
 
 /** مكتبة المنهج: حزم مشفرة (AES-256-GCM) على الموقع، لا تُفتح إلا برمز المكتبة. */
 export interface LibraryItem {
@@ -50,9 +51,10 @@ export async function openLibrary(code: string): Promise<LibraryItem[]> {
   await getKey(code)
   const res = await fetch(url('manifest.bin'), { cache: 'no-cache' })
   if (!res.ok) throw new Error('network')
-  const items = JSON.parse(new TextDecoder().decode(await unseal(code, await res.arrayBuffer())))
+  const items = JSON.parse(new TextDecoder().decode(await unseal(code, await res.arrayBuffer()))) as LibraryItem[]
   save('library-code', code)
-  return items
+  // كتب المادة المستثناة للطالب لا تظهر ولا تُنزَّل
+  return items.filter((i) => subjectAllowed(i.subject))
 }
 
 export async function downloadBook(code: string, item: LibraryItem, onProgress: (p: number) => void) {

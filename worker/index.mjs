@@ -13,6 +13,7 @@ import * as aiadmin from './aiadmin.mjs'
 export { classify } from './upstream.mjs'
 import * as track from './track.mjs'
 import * as lessons from './lessons.mjs'
+import * as placement from './placement.mjs'
 
 // صور الصفحات تكبر الطلب: حتى 4 صور JPEG
 const MAX_BODY = 6_000_000
@@ -153,6 +154,17 @@ async function accounts(request, env, url) {
   const ls = p.match(/^\/admin\/lessons\/([^/]+)\/([^/]+)$/)
   if (ls && m === 'PUT') return J(await lessons.put(request, env, decodeURIComponent(ls[1]), decodeURIComponent(ls[2]), await jsonBody(request, lessons.MAX_PACK + 1000)))
   if (ls && m === 'PATCH') return J(await lessons.patch(request, env, decodeURIComponent(ls[1]), decodeURIComponent(ls[2]), await jsonBody(request)))
+  if (m === 'GET' && p === '/placement') return J(await placement.overview(request, env))
+  const pl = p.match(/^\/placement\/([^/]+)\/(start|answers|submit)$/)
+  if (pl && m === 'POST' && pl[2] === 'start') return J(await placement.start(request, env, decodeURIComponent(pl[1])))
+  if (pl && m === 'PUT' && pl[2] === 'answers') return J(await placement.save(request, env, decodeURIComponent(pl[1]), await jsonBody(request)))
+  if (pl && m === 'POST' && pl[2] === 'submit') return J(await placement.submit(request, env, decodeURIComponent(pl[1]), await jsonBody(request)))
+  if (m === 'GET' && p === '/admin/placement') return J(await placement.adminOverview(request, env))
+  const pb = p.match(/^\/admin\/placement\/bank\/([^/]+)$/)
+  if (pb && m === 'PUT') return J(await placement.putBank(request, env, decodeURIComponent(pb[1]), await jsonBody(request, 500_000)))
+  const pr = p.match(/^\/admin\/placement\/results\/([a-z_]+)$/)
+  if (pr && m === 'GET') return J(await placement.adminResults(request, env, pr[1]))
+  if (m === 'POST' && p === '/admin/placement/reset') return J(await placement.adminReset(request, env, await jsonBody(request)))
   if (m === 'GET' && p === '/admin/overview') return J(await admin.overview(request, env))
   if (m === 'GET' && p === '/admin/events') return J(await admin.timeline(request, env, url))
   if (m === 'POST' && p === '/admin/password') return J(await auth.adminSetPassword(await jsonBody(request), env, request))
@@ -175,7 +187,7 @@ async function accounts(request, env, url) {
 
 async function handle(request, env, ctx) {
   const url = new URL(request.url)
-  if (/^\/(auth|data|track|plan|admin|lessons)(\/|$)/.test(url.pathname)) {
+  if (/^\/(auth|data|track|plan|admin|lessons|placement)(\/|$)/.test(url.pathname)) {
     const res = await accounts(request, env, url)
     if (res) return res
     throw new HttpError(404, 'not_found')

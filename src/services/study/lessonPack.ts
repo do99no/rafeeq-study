@@ -102,7 +102,8 @@ export interface PackInfo {
 }
 
 // ===== التخزين على الجهاز (IndexedDB، فالمحتوى أكبر من التخزين المحلي): حزم كل كتاب، تُحدَّث حين تتغير في الخادم =====
-type Entry = { at: number; lessons: Record<string, LessonPack> }
+/** hold: بصمة أسئلة تحديد المستوى المحجوبة وقت التنزيل؛ إن تغيّرت أُعيد التنزيل (فلا تبقى نسخة قديمة فيها إجاباتها) */
+type Entry = { at: number; hold?: string; lessons: Record<string, LessonPack> }
 type Cache = Record<string, Entry>
 let cache: Cache = {}
 let index: PackInfo[] = load<PackInfo[]>('lesson-index') ?? []
@@ -160,7 +161,8 @@ export function syncPacks(bookIds?: string[]): Promise<void> {
   syncing ??= (async () => {
     await packsReady
     try {
-      const r = await api<{ lessons: PackInfo[] }>('/lessons')
+      const r = await api<{ lessons: PackInfo[]; hold?: string }>('/lessons')
+      const hold = r.hold ?? ''
       index = r.lessons
       save('lesson-index', index)
       const latest = new Map<string, number>()
@@ -169,15 +171,15 @@ export function syncPacks(bookIds?: string[]): Promise<void> {
         if (bookIds && !bookIds.includes(bookId)) continue
         const have = Object.keys(cache[bookId]?.lessons ?? {}).length
         const want = index.filter((l) => l.bookId === bookId).length
-        if (cache[bookId]?.at === at && have === want) continue
+        if (cache[bookId]?.at === at && have === want && (cache[bookId]?.hold ?? '') === hold) continue
         const b = await api<{ lessons: LessonPack[] }>(`/lessons/${encodeURIComponent(bookId)}`)
-        cache = { ...cache, [bookId]: { at, lessons: Object.fromEntries(b.lessons.map((p) => [p.sectionId, p])) } }
+        cache = { ...cache, [bookId]: { at, hold, lessons: Object.fromEntries(b.lessons.map((p) => [p.sectionId, p])) } }
         persist(bookId)
         emit()
       }
       // ما حُذف أو أُخفي في الخادم يُحذف هنا
       for (const id of Object.keys(cache))
-        if (!latest.has(id)) {
+        if (!latest.has(id) || (cache[id]?.hold ?? '') !== hold) {
           const { [id]: _, ...rest } = cache
           cache = rest
           persist(id)

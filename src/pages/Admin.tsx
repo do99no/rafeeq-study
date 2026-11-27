@@ -7,6 +7,7 @@ import { adminSetPassword, api, changePassword, logout, ServerError } from '../s
 import { toast } from '../store/toast'
 import { AdminAI } from './AdminAI'
 import { AdminContent } from './AdminContent'
+import { AdminPlacement } from './AdminPlacement'
 import { coverage, EXAM_SOURCES } from '../services/study/exams'
 
 interface Summary {
@@ -786,6 +787,9 @@ export default function AdminApp({ path }: { path: string }) {
         <Link to="/admin/content" className="btn btn-sm">
           <BookOpenCheck aria-hidden="true" /> جاهزية المحتوى
         </Link>
+        <Link to="/admin/placement" className="btn btn-sm">
+          <ClipboardList aria-hidden="true" /> تحديد المستوى
+        </Link>
         <Link to="/admin/ai" className="btn btn-sm">
           <Zap aria-hidden="true" /> الذكاء الاصطناعي
         </Link>
@@ -793,7 +797,7 @@ export default function AdminApp({ path }: { path: string }) {
           <KeyRound aria-hidden="true" /> حسابي
         </Link>
       </header>
-      <main className="main">{sid ? <StudentPage key={sid} id={sid} /> : path === '/admin/me' ? <OwnAccount /> : path === '/admin/ai' ? <AdminAI /> : path === '/admin/content' ? <AdminContent /> : <Overview />}</main>
+      <main className="main">{sid ? <StudentPage key={sid} id={sid} /> : path === '/admin/me' ? <OwnAccount /> : path === '/admin/ai' ? <AdminAI /> : path === '/admin/content' ? <AdminContent /> : path === '/admin/placement' ? <AdminPlacement /> : <Overview />}</main>
     </div>
   )
 }

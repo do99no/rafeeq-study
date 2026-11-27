@@ -43,6 +43,8 @@ export default function Workspace({ id }: { id: string }) {
   /** محتوى جاهز يُعرض دون حفظه في بيانات الطالب */
   const [shown, setShown] = useState<{ output: StudyOutput; prepared: string } | null>(null)
   const [tool, setTool] = useState<ToolKind | null>(null)
+  /** أدوات الدرس على الشاشة العريضة: درج يُفتح عند الحاجة ويُغلق عند اختيار أداة (أداة واحدة في كل مرة) */
+  const [toolsOpen, setToolsOpen] = useState(false)
 
   const exists = !!notebook
   useEffect(() => {
@@ -80,6 +82,7 @@ export default function Workspace({ id }: { id: string }) {
 
   const addSource = () => setDialog('add')
   const openPack = (p: LessonPack, t: PackTool) => {
+    setToolsOpen(false)
     const { output, keep } = packOutput(notebook, p, t)
     if (keep || data.outputs.some((o) => o.id === output.id)) {
       if (keep) actions.addOutput(output)
@@ -104,8 +107,8 @@ export default function Workspace({ id }: { id: string }) {
       notebook={notebook}
       focus={notebook.focus}
       activeIds={activeIds}
-      onTool={setTool}
-      onOpen={(o) => setOutputId(o.id)}
+      onTool={(t) => (setToolsOpen(false), setTool(t))}
+      onOpen={(o) => (setToolsOpen(false), setOutputId(o.id))}
       onPack={openPack}
     />
   )
@@ -121,6 +124,11 @@ export default function Workspace({ id }: { id: string }) {
           </div>
         </div>
         <div className="ws-head-actions">
+          {isWide && (
+            <button className="btn btn-sm" aria-expanded={toolsOpen} onClick={() => setToolsOpen(!toolsOpen)}>
+              <WandSparkles aria-hidden="true" /> أدوات الدرس
+            </button>
+          )}
           <button className="icon-btn" onClick={() => setDialog('edit')} aria-label="تعديل الدفتر" title="تعديل الدفتر">
             <Pencil />
           </button>
@@ -152,12 +160,17 @@ export default function Workspace({ id }: { id: string }) {
           {sources}
         </aside>
       )}
-      {(isWide || tab === 'chat') && <ChatPanel key={chatOf(notebook)} notebook={notebook} books={books} activeIds={activeIds} onAddSource={addSource} onOpenOutput={(o) => setOutputId(o.id)} onTools={() => setTab('studio')} onPack={openPack} />}
-      {(isWide || tab === 'studio') && (
+      {(isWide || tab === 'chat') && <ChatPanel key={chatOf(notebook)} notebook={notebook} books={books} activeIds={activeIds} onAddSource={addSource} onOpenOutput={(o) => setOutputId(o.id)} onTools={() => (isWide ? setToolsOpen(true) : setTab('studio'))} onPack={openPack} />}
+      {!isWide && tab === 'studio' && (
         <aside className="ws-side" aria-labelledby="tools-h">
           <h2 id="tools-h">أدوات الدرس</h2>
           {tools}
         </aside>
+      )}
+      {isWide && toolsOpen && (
+        <Dialog variant="end" title="أدوات الدرس" onClose={() => setToolsOpen(false)}>
+          <div className="ws-side ws-drawer">{tools}</div>
+        </Dialog>
       )}
 
       {dialog === 'add' && <AddSourceDialog notebook={notebook} onClose={() => setDialog(null)} />}

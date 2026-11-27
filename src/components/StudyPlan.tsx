@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { CalendarDays, ChevronLeft, TriangleAlert } from 'lucide-react'
 import { num } from '../lib/format'
 import { buildPlan, type PlanItem } from '../lib/planner'
+import { lessonStates, usePlacement } from '../services/study/placement'
 import { focusOf, startStudy } from '../lib/study'
 import { useDocs } from '../services/books/process'
 import { usePlan } from '../services/server/session'
@@ -18,11 +19,13 @@ export function StudyPlan() {
   const examDate = admin?.examDate || data.settings.examDate || ''
   const dailyMin = admin?.dailyMin || data.settings.dailyMin || 90
   const [all, setAll] = useState(false)
+  const placement = usePlacement()
+  const states = useMemo(() => (placement?.results.length ? lessonStates(placement.results) : undefined), [placement])
   const plan = useMemo(() => {
     if (!examDate) return null
     const books = data.books.filter((b) => docs[b.id]?.sections.length)
-    return buildPlan({ books, sections: Object.fromEntries(books.map((b) => [b.id, docs[b.id].sections])), studied: data.studied, mistakes: data.mistakes, examDate, dailyMin })
-  }, [examDate, dailyMin, data.books, data.studied, data.mistakes, docs])
+    return buildPlan({ books, sections: Object.fromEntries(books.map((b) => [b.id, docs[b.id].sections])), studied: data.studied, mistakes: data.mistakes, examDate, dailyMin, placement: states })
+  }, [examDate, dailyMin, data.books, data.studied, data.mistakes, docs, states])
 
   const open = (it: PlanItem) => {
     const s = docs[it.bookId]?.sections.find((x) => x.id === it.sectionId)
@@ -35,7 +38,7 @@ export function StudyPlan() {
         <span className="grow">
           <strong>{it.title}</strong>
           <small className="muted">
-            {it.subject}، {num(it.minutes)} دقيقة{it.kind === 'review' ? '، مراجعة خطأ سابق' : ''}
+            {it.subject}، {num(it.minutes)} دقيقة{it.note ? `، ${it.note}` : it.kind === 'review' ? '، مراجعة خطأ سابق' : ''}
             {it.offExam ? '، خارج امتحان ٢٠٢٥' : ''}
           </small>
         </span>

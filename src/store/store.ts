@@ -3,6 +3,7 @@ import type { Book, Flashcard, Focus, Message, Mistake, Notebook, Profile, QuizA
 import { emptyData, migrateV1 } from '../data/empty'
 import { isOurKey, load, loadOld, removePrefix, save } from '../services/storage/local'
 import { toast } from './toast'
+import { visibleData } from '../lib/subjects'
 
 interface AppState {
   profiles: Profile[]
@@ -72,8 +73,16 @@ addEventListener('storage', (e) => {
 })
 
 export const getState = () => state
+/** الواجهة ترى بيانات الطالب دون المادة المستثناة له (lib/subjects)؛ الكتابة تبقى على البيانات كاملة فلا يُحذف شيء */
+let viewOf: { s: AppState; v: AppState } | undefined
+const view = () => {
+  const data = visibleData(state.data)
+  if (data === state.data) return state
+  if (viewOf?.s !== state || viewOf.v.data !== data) viewOf = { s: state, v: { ...state, data } }
+  return viewOf.v
+}
 export function useStore<T>(select: (s: AppState) => T): T {
-  return useSyncExternalStore(subscribe, () => select(state))
+  return useSyncExternalStore(subscribe, () => select(view()))
 }
 export const useData = () => useStore((s) => s.data)
 

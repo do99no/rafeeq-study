@@ -9,6 +9,7 @@ import { SUMMARY_STYLES, type SummaryStyle } from './generate'
 import { classify, LESSON_TASKS, norm, topicOf } from './intent'
 import { pageImages, planPages, type PagePlan, type PageRef } from './pages'
 import { errataNote, errataOf } from '../../data/errata'
+import { getState } from '../../store/store'
 import { imagesNote, LEVELS, subjectGuide, SYMBOLIC, TASKS, TUTOR } from './prompts'
 
 export interface Ctx {
@@ -252,6 +253,9 @@ export async function* respond(ask: Ask, history: Message[], ctx: Ctx, signal: A
   }
 
   const where = focus ? `\nالطالب يدرس الآن: «${focus.title}» من كتاب «${ctx.titleOf(focus.bookId)}».` : ''
+  // نقاط ضعف الطالب في هذا الدرس (من تحديد المستوى والاختبارات): يتابعها المدرّس دون أن يطيل
+  const slips = focus ? getState().data.mistakes.filter((m) => !m.resolved && m.bookId === focus!.bookId && m.page >= focus!.from && m.page <= focus!.to).slice(0, 3) : []
+  const weakNote = slips.length ? `\nأخطأ الطالب سابقاً في هذا الدرس في: ${slips.map((m) => `«${m.q.slice(0, 140)}» (الصحيح: ${m.answer.slice(0, 80)})`).join('؛ ')}. انتبه لهذه النقاط في شرحك وأسئلتك حين يناسب، دون أن تكشف إجابة سؤال تطرحه.` : ''
   const guide = subjectGuide([focus?.bookId, ...hits.map((h) => h.bookId)].map((id) => (id ? ctx.subjectOf?.(id) : undefined)))
 
   // صفحات سقطت منها معادلات أو رسوم، وصفحات من الدرس بلا نص: تُرفق صورها لمزود يقرأ الصور
@@ -270,7 +274,7 @@ export async function* respond(ask: Ask, history: Message[], ctx: Ctx, signal: A
   const fixes = errataNote([...new Set([...hits.flatMap((h) => errataOf(h.bookId, h.page)), ...(focus ? errataOf(focus.bookId, focus.from, focus.to) : [])])])
 
   const messages: ChatMsg[] = [
-    { role: 'system', content: `${TUTOR}${guide ? `\n${guide}` : ''}\n${LEVELS[ctx.level].ask}${where}${fixes ? `\n${fixes}` : ''}` },
+    { role: 'system', content: `${TUTOR}${guide ? `\n${guide}` : ''}\n${LEVELS[ctx.level].ask}${where}${weakNote}${fixes ? `\n${fixes}` : ''}` },
     ...historyMsgs(history),
     {
       role: 'user',

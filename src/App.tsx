@@ -13,6 +13,9 @@ import { beginStudent } from './services/server/session'
 import { logEvent, setStudying, setTask } from './services/server/tracker'
 import { Login, Setup } from './pages/Login'
 import { ImportLocal } from './components/ImportLocal'
+import { UpdateBanner } from './components/UpdateBanner'
+import { needsPlacement, refreshPlacement } from './services/study/placement'
+import { go } from './router'
 
 const Notebooks = lazy(() => import('./pages/Notebooks'))
 const Workspace = lazy(() => import('./pages/Workspace'))
@@ -21,10 +24,11 @@ const Review = lazy(() => import('./pages/Review'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Progress = lazy(() => import('./pages/Progress'))
 const Exams = lazy(() => import('./pages/Exams'))
+const Placement = lazy(() => import('./pages/Placement'))
 const PageViewer = lazy(() => import('./components/PageViewer'))
 const AdminApp = lazy(() => import('./pages/Admin'))
 
-const TITLES: Record<string, string> = { '/notebooks': 'المواد والدفاتر', '/library': 'الكتب', '/review': 'المراجعة', '/progress': 'التقدم', '/exams': 'الامتحانات والتدريب', '/settings': 'الإعدادات' }
+const TITLES: Record<string, string> = { '/notebooks': 'المواد والدفاتر', '/library': 'الكتب', '/review': 'المراجعة', '/progress': 'التقدم', '/exams': 'الامتحانات والتدريب', '/settings': 'الإعدادات', '/placement': 'تحديد المستوى' }
 
 function useDisplaySettings() {
   const { theme, textSize } = useStore((s) => s.data.settings)
@@ -60,6 +64,23 @@ function StudentApp() {
       .then((n) => n && toast(`حُدّثت فهارس الدروس في ${num(n)} من كتبك.`))
       .catch(() => {})
   }, [profileId])
+
+  // تحديد المستوى: عند الدخول، إن كانت الرحلة جاهزة ولم تكتمل، يبدأ بها الطالب (مرة في كل جلسة)
+  const uidNow = useAccount().session?.user
+  useEffect(() => {
+    if (uidNow?.role !== 'student') return
+    void refreshPlacement().then((o) => {
+      const k = 'rafeeq-placement-shown:' + uidNow.id
+      if (!needsPlacement(o)) return
+      try {
+        if (sessionStorage.getItem(k)) return
+        sessionStorage.setItem(k, '1')
+      } catch {
+        /* بلا تخزين: يظهر كل مرة */
+      }
+      if (!location.hash.startsWith('#/notebooks/')) go('/placement')
+    })
+  }, [uidNow?.id, uidNow?.role])
 
   // يكمل معالجة ما انقطع بإغلاق النافذة
   useEffect(() => {
@@ -99,6 +120,8 @@ function StudentApp() {
     <Library />
   ) : path === '/exams' ? (
     <Exams />
+  ) : path === '/placement' ? (
+    <Placement />
   ) : path === '/review' ? (
     <Review />
   ) : path === '/progress' ? (
@@ -154,12 +177,14 @@ export function App() {
         <Suspense fallback={<div className="page-loading">جارٍ التحميل…</div>}>
           <AdminApp path={path} />
         </Suspense>
+        <UpdateBanner />
         <Toast />
       </>
     )
   return (
     <>
       <StudentApp />
+      <UpdateBanner />
       {needImport && <ImportLocal onClose={() => setNeedImport(false)} />}
     </>
   )

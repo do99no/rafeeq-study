@@ -27,6 +27,12 @@ export const STUDENTS = [
   { id: 'amna', name: 'أمنة' },
 ]
 
+/** حسابا تجربة لاختبار الموقع المنشور دون المساس ببيانات الطالبين: لا يظهران في صفحة الدخول ولا في لوحة المتابعة، ويُنشآن حين يحدد المسؤول كلمتيهما */
+export const TESTERS = [
+  { id: 'qa_bio', name: 'تجربة: مسار الأحياء' },
+  { id: 'qa_eng', name: 'تجربة: مسار العلوم الهندسية' },
+]
+
 async function derive(password, salt, iters, pepper) {
   // الفلفل يدخل عبر HMAC قبل الاشتقاق، فلا تكفي قاعدة البيانات وحدها لتجربة كلمات المرور
   const hk = await crypto.subtle.importKey('raw', new TextEncoder().encode(pepper), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
@@ -202,7 +208,9 @@ export async function changeOwn(b, env, request) {
 export async function adminSetPassword(b, env, request) {
   await requireUser(request, env, 'admin')
   const DB = await needDB(env)
-  if (!STUDENTS.some((s) => s.id === b.userId) && b.userId !== 'admin') throw new HttpError(400, 'bad_request')
+  if (!STUDENTS.some((s) => s.id === b.userId) && !TESTERS.some((s) => s.id === b.userId) && b.userId !== 'admin') throw new HttpError(400, 'bad_request')
+  const t = TESTERS.find((s) => s.id === b.userId)
+  if (t) await run(DB, 'INSERT OR IGNORE INTO users (id, role, name, created) VALUES (?, ?, ?, ?)', t.id, 'student', t.name, Date.now())
   await setPassword(DB, b.userId, b, env)
   return { ok: true }
 }

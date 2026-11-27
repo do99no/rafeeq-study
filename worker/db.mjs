@@ -28,6 +28,11 @@ export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS ai_cool (provider TEXT NOT NULL, project TEXT NOT NULL, model TEXT NOT NULL, cool_until INTEGER NOT NULL, reason TEXT NOT NULL, PRIMARY KEY (provider, project, model))`,
   // محتوى الدروس الجاهز (worker/lessons.mjs): مشترك بين الطالبين، يكتبه المسؤول فقط
   `CREATE TABLE IF NOT EXISTS lessons (book_id TEXT NOT NULL, section_id TEXT NOT NULL, title TEXT NOT NULL, json TEXT NOT NULL, parts TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'ai', model TEXT, updated INTEGER NOT NULL, size INTEGER NOT NULL, PRIMARY KEY (book_id, section_id))`,
+  // اختبار تحديد المستوى (worker/placement.mjs)
+  `CREATE TABLE IF NOT EXISTS placement_bank (subject TEXT PRIMARY KEY, json TEXT NOT NULL, n INTEGER NOT NULL, published INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS placement_journey (user_id TEXT PRIMARY KEY, subjects TEXT NOT NULL, started INTEGER NOT NULL, completed INTEGER)`,
+  `CREATE TABLE IF NOT EXISTS placement (user_id TEXT NOT NULL, subject TEXT NOT NULL, status TEXT NOT NULL, json TEXT NOT NULL, answers TEXT NOT NULL DEFAULT '{}', elapsed_ms INTEGER NOT NULL DEFAULT 0, started INTEGER NOT NULL, saved INTEGER NOT NULL, submitted INTEGER, score INTEGER, total INTEGER, PRIMARY KEY (user_id, subject))`,
+  `CREATE TABLE IF NOT EXISTS placement_archive (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, at INTEGER NOT NULL, json TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS ai_providers (id TEXT PRIMARY KEY, approved INTEGER NOT NULL DEFAULT 0, approved_at INTEGER, confirm TEXT)`,
 ]
 

@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
+import { BUILD, BUILT_AT } from '../lib/version'
 import { Download, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { ConfirmDialog } from '../components/Dialog'
 import { ServicesPanel } from '../components/ServicesPanel'
+import { VoiceSettings } from '../components/VoiceSettings'
 import { emptyData, parseBackup } from '../data/empty'
 import { ago } from '../lib/format'
 import { actions, getState, readSnapshot, useStore } from '../store/store'
@@ -107,6 +109,8 @@ export default function Settings() {
         </div>
       </section>
 
+      <VoiceSettings />
+
       <ServicesPanel />
 
       {account && <AccountSection />}
@@ -178,6 +182,8 @@ export default function Settings() {
         />
         <p className="muted">تشمل النسخة الدفاتر والمحادثات والمراجعات والملاحظات. ملفات PDF لا تدخل فيها؛ أضف الملف نفسه على الجهاز الجديد فيُربط بالاستشهادات تلقائياً. لا توجد مزامنة بين الأجهزة.</p>
       </section>
+
+      <p className="muted build-id">نسخة رفيق: <bdi>{BUILD}</bdi>{BUILT_AT ? ` · ${new Date(BUILT_AT).toLocaleString('ar')}` : ''}</p>
 
       {confirm && (
         <ConfirmDialog

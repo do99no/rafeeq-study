@@ -10,6 +10,7 @@ import './styles/app.css'
 import './styles/workspace.css'
 import './styles/study.css'
 import './styles/account.css'
+import './styles/placement.css'
 import { App } from './App'
 
 createRoot(document.getElementById('root')!).render(

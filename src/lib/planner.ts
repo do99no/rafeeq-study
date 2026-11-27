@@ -16,6 +16,8 @@ export interface PlanItem {
   sectionId?: string
   minutes: number
   offExam?: boolean
+  /** من نتيجة تحديد المستوى */
+  note?: string
 }
 export interface PlanDay {
   date: string
@@ -48,6 +50,8 @@ export function buildPlan(input: {
   examDate: string
   dailyMin: number
   today?: number
+  /** نتيجة تحديد المستوى لكل درس اختُبر فيه (bookId:sectionId) */
+  placement?: Map<string, { ok: boolean; level: string; basics: boolean }>
 }): StudyPlan {
   const today = input.today ?? Date.now()
   const exam = new Date(`${input.examDate}T00:00:00`).getTime()
@@ -68,11 +72,17 @@ export function buildPlan(input: {
         done++
         continue
       }
-      const item: PlanItem = { kind: 'learn', bookId: b.id, subject, title: s.title, from: s.page, to: s.endPage, sectionId: s.id, minutes: minutesOf(subject, s.endPage - s.page + 1), ...(removedFromExam(b.id, s.title) ? { offExam: true } : {}) }
+      const pl = input.placement?.get(`${b.id}:${s.id}`)
+      const mins = minutesOf(subject, s.endPage - s.page + 1)
+      // أتقنه في تحديد المستوى (سؤال متوسط أو صعب): مراجعة سريعة بدل دراسته من جديد
+      const known = pl?.ok && pl.level !== 'easy'
+      const item: PlanItem = { kind: known ? 'review' : 'learn', bookId: b.id, subject, title: s.title, from: s.page, to: s.endPage, sectionId: s.id, minutes: known ? Math.max(15, Math.round(mins * 0.4)) : mins, ...(removedFromExam(b.id, s.title) ? { offExam: true } : {}), ...(pl ? { note: pl.ok ? (known ? 'أتقنته في تحديد المستوى: مراجعة سريعة' : 'أجبت صحيحاً في تحديد المستوى') : pl.basics ? 'أخطأت فيه في تحديد المستوى: ابدأ من الأساسيات' : 'أخطأت فيه في تحديد المستوى: أولوية' } : {}) }
       queues.set(subject, [...(queues.get(subject) ?? []), item])
     }
   }
-  for (const [k, q] of queues) queues.set(k, [...q.filter((x) => !x.offExam), ...q.filter((x) => x.offExam)])
+  // ما أخطأ فيه في تحديد المستوى أولاً (بترتيب المنهج)، ثم البقية، والمحذوف من الامتحان آخراً
+  const weakFirst = (x: PlanItem) => (x.offExam ? 2 : x.note?.startsWith('أخطأت') ? 0 : 1)
+  for (const [k, q] of queues) queues.set(k, q.map((x, i) => ({ x, i })).sort((a, b) => weakFirst(a.x) - weakFirst(b.x) || a.i - b.i).map((v) => v.x))
 
   // تبادل المواد يوماً بيوم (درس من كل مادة بالدور)، بحد الدقائق اليومية
   const order: PlanItem[] = []

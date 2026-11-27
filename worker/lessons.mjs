@@ -5,6 +5,7 @@
 import * as auth from './auth.mjs'
 import { all, db, one, run } from './db.mjs'
 import { HttpError } from './http.mjs'
+import { excludedOf, heldFor, holdKey } from './placement.mjs'
 
 const ID = /^[A-Za-z0-9_-]{1,80}$/
 const STATUS = ['ai', 'reviewed', 'hidden']
@@ -24,8 +25,10 @@ const ids = (book, section) => {
 export async function index(request, env) {
   const u = await auth.requireUser(request, env)
   const DB = await need(env)
-  const rows = await all(DB, 'SELECT book_id, section_id, title, parts, status, model, updated, size FROM lessons ORDER BY book_id, section_id')
-  return { lessons: rows.filter((r) => u.role === 'admin' || r.status !== 'hidden').map((r) => ({ bookId: r.book_id, sectionId: r.section_id, title: r.title, parts: JSON.parse(r.parts), status: r.status, model: r.model, updated: r.updated, size: r.size })) }
+  const rows = await all(DB, "SELECT book_id, section_id, title, parts, status, model, updated, size, json_extract(json, '$.subject') AS subject FROM lessons ORDER BY book_id, section_id")
+  const x = excludedOf(u)
+  // hold: بصمة أسئلة تحديد المستوى المحجوبة؛ تغيّرها يجعل المتصفح يعيد تنزيل الحزم
+  return { hold: await holdKey(DB, u), lessons: rows.filter((r) => (u.role === 'admin' || r.status !== 'hidden') && (!x || r.subject !== x)).map((r) => ({ bookId: r.book_id, sectionId: r.section_id, title: r.title, parts: JSON.parse(r.parts), status: r.status, model: r.model, updated: r.updated, size: r.size })) }
 }
 
 /** كل دروس كتاب جاهزة دفعة واحدة */
@@ -34,7 +37,13 @@ export async function ofBook(request, env, book) {
   if (!ID.test(book)) throw new HttpError(400, 'bad_request')
   const DB = await need(env)
   const rows = await all(DB, 'SELECT section_id, json, status, updated FROM lessons WHERE book_id = ?', book)
-  return { bookId: book, lessons: rows.filter((r) => u.role === 'admin' || r.status !== 'hidden').map((r) => ({ ...JSON.parse(r.json), status: r.status, updated: r.updated })) }
+  // المادة المستثناة للطالب: ممنوعة من الخادم ولو طُلبت مباشرة
+  const x = excludedOf(u)
+  if (x && rows.some((r) => JSON.parse(r.json).subject === x)) throw new HttpError(403, 'subject')
+  // أسئلة تحديد المستوى لا تصل إلى الطالب ضمن الدرس قبل أن تظهر نتائجه
+  const held = await heldFor(DB, u, book)
+  const strip = (p) => (held?.size && Array.isArray(p.quiz) ? { ...p, quiz: p.quiz.filter((x) => !held.has(x?.q)) } : p)
+  return { bookId: book, hold: await holdKey(DB, u), lessons: rows.filter((r) => u.role === 'admin' || r.status !== 'hidden').map((r) => ({ ...strip(JSON.parse(r.json)), status: r.status, updated: r.updated })) }
 }
 
 export async function put(request, env, book, section, body) {

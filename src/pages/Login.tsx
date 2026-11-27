@@ -34,7 +34,8 @@ export function Login({ status, onDone }: { status: Status; onDone: () => void }
   const [pw, setPw] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const students = status.students ?? []
+  // حسابا التجربة لا يظهران إلا برابط فيه qa (لاختبار الموقع المنشور دون المساس بحسابي الطالبين)
+  const students = [...(status.students ?? []), ...(location.hash.includes('qa=1') ? [{ id: 'qa_bio', name: 'تجربة: مسار الأحياء', ready: true }, { id: 'qa_eng', name: 'تجربة: مسار العلوم الهندسية', ready: true }] : [])]
   const name = who === 'admin' ? 'المسؤول' : students.find((s) => s.id === who)?.name
 
   const submit = async (e: FormEvent) => {

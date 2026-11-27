@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
+import { canSpeak, speak, stopSpeaking } from '../../lib/speech'
 import { logEvent, setTask } from '../../services/server/tracker'
-import { Pencil, Printer } from 'lucide-react'
+import { Pencil, Printer, Volume2, VolumeX } from 'lucide-react'
 import { printOutput } from '../../lib/print'
-import { actions } from '../../store/store'
+import { actions, getState } from '../../store/store'
 import { toast } from '../../store/toast'
 import type { StudyOutput } from '../../types'
 import { Dialog } from '../Dialog'
@@ -45,6 +46,8 @@ function NoteView({ output, text, onDone }: { output: StudyOutput; text: string;
 export default function OutputDialog({ output, onClose, prepared }: { output: StudyOutput; onClose: () => void; prepared?: string }) {
   const { data } = output
   const [editing, setEditing] = useState(false)
+  const [reading, setReading] = useState(false)
+  useEffect(() => () => stopSpeaking(), [])
   // وقت المراجعة يُنسب إلى نوعها
   useEffect(() => {
     setTask(data.kind === 'quiz' ? 'quiz' : data.kind === 'cards' ? 'cards' : 'review')
@@ -52,9 +55,14 @@ export default function OutputDialog({ output, onClose, prepared }: { output: St
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [output.id])
   return (
-    <Dialog variant="wide" title={output.title} onClose={onClose}>
+    <Dialog variant="wide" back="رجوع إلى الدرس" title={output.title} onClose={onClose}>
       {prepared && <p className="ready-tag">{prepared}</p>}
       <div className="btn-row">
+        {canSpeak && (data.kind === 'summary' || data.kind === 'compare' || data.kind === 'note') && (
+          <button className="btn btn-sm" aria-pressed={reading} onClick={() => { if (reading) { stopSpeaking(); setReading(false) } else { const s = getState().data.settings; setReading(true); speak(data.text, { voice: s.voice, rate: s.rate, onEnd: () => setReading(false) }) } }}>
+            {reading ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />} {reading ? 'إيقاف القراءة' : 'استمع'}
+          </button>
+        )}
         <button className="btn btn-sm" onClick={() => printOutput(output) || toast('اسمح للموقع بفتح نافذة جديدة لطباعة هذه الورقة.')}>
           <Printer aria-hidden="true" /> {data.kind === 'quiz' ? 'طباعة مع نموذج الإجابة' : 'طباعة أو حفظ PDF'}
         </button>

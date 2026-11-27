@@ -1,4 +1,5 @@
-import { ArrowLeft, Layers } from 'lucide-react'
+import { ArrowLeft, Layers, PlayCircle, Target } from 'lucide-react'
+import { needsPlacement, usePlacement } from '../services/study/placement'
 import { isDue, normalCards } from '../components/outputs/CardsView'
 import { ago, booksCount, lessonsCount, num } from '../lib/format'
 import { setupCurriculum, useCurriculum } from '../services/books/curriculum'
@@ -25,6 +26,7 @@ export function Home() {
   const weak = [...open.reduce((m, x) => m.set(x.topic, [...(m.get(x.topic) ?? []), x]), new Map<string, typeof open>())].sort((a, b) => b[1].length - a[1].length).slice(0, 3)
   const due = outputs.reduce((n, o) => n + (o.data.kind === 'cards' ? normalCards(o.data.cards, o.data.known).filter((c) => isDue(c)).length : 0), 0)
   const hour = new Date().getHours()
+  const placement = usePlacement()
 
   return (
     <div className="page">
@@ -33,11 +35,28 @@ export function Home() {
           <h1>
             {hour < 12 ? 'صباح الخير' : 'مساء الخير'}، {name}
           </h1>
-          <p className="muted">اختر مادة ثم درساً، وادرسه مع رفيق: شرح خطوة خطوة، وأسئلة، وملخصات واختبارات جاهزة من كتابك.</p>
         </div>
       </header>
 
-      <PlanCard />
+      {needsPlacement(placement) ? (
+        <Link to="/placement" className="hero-action place-cta">
+          <Target aria-hidden="true" />
+          <span className="grow">
+            <strong>ابدأ باختبار تحديد المستوى</strong>
+            <small>اختبار قصير لكل مادة يحدد من أين تبدأ، ثم تُبنى خطتك عليه.</small>
+          </span>
+          <ArrowLeft aria-hidden="true" />
+        </Link>
+      ) : last[0] ? (
+        <button className="hero-action" onClick={() => startStudy(last[0].bookId, { bookId: last[0].bookId, from: last[0].from, to: last[0].to, title: last[0].title })}>
+          <PlayCircle aria-hidden="true" />
+          <span className="grow">
+            <strong>تابع الدراسة: {last[0].title}</strong>
+            <small>{books.find((b) => b.id === last[0].bookId)?.title}{last[0].taught ? `، الخطوة ${num(last[0].taught.k)} من ${num(last[0].taught.n)}` : ''}</small>
+          </span>
+          <ArrowLeft aria-hidden="true" />
+        </button>
+      ) : null}
       <StudyPlan />
       <section aria-labelledby="subj-h">
         <div className="section-head">
@@ -80,13 +99,16 @@ export function Home() {
         )}
       </section>
 
-      {(last.length > 0 || weak.length > 0 || due > 0) && (
+      <PlanCard />
+      {(last.length > 1 || weak.length > 0 || due > 0) && (
+        <details className="home-more">
+          <summary>المراجعة وما درسته مؤخراً{weak.length + (due ? 1 : 0) ? ` (${num(weak.length + (due ? 1 : 0))})` : ''}</summary>
         <div className="home-cols">
-          {last.length > 0 && (
+          {last.length > 1 && (
             <section className="recent" aria-labelledby="cont-h">
-              <h2 id="cont-h">تابع من حيث توقفت</h2>
+              <h2 id="cont-h">درست مؤخراً</h2>
               <ul>
-                {last.map((s) => (
+                {last.slice(1).map((s) => (
                   <li key={s.key}>
                     <button className="recent-row" onClick={() => startStudy(s.bookId, { bookId: s.bookId, from: s.from, to: s.to, title: s.title })}>
                       <span className="grow">
@@ -144,8 +166,8 @@ export function Home() {
             </section>
           )}
         </div>
+        </details>
       )}
-
     </div>
   )
 }

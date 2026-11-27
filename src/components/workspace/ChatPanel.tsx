@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { canSpeak, speak as speakText, stopSpeaking } from '../../lib/speech'
 import { ArrowUp, BookOpenCheck, BookOpenText, BookPlus, Sparkles, WandSparkles, Check, CircleHelp, Copy, GraduationCap, Layers, ListChecks, LoaderCircle, NotebookPen, RotateCcw, Square, Target, Volume2, VolumeX, X } from 'lucide-react'
 import { num } from '../../lib/format'
 import { onAsk, takeAsk } from '../../lib/study'
@@ -23,7 +24,6 @@ import { PagesNote } from './PagesNote'
 
 const NONE: Message[] = []
 const plain = (t: string) => t.replace(/\*\*|`|#+ |^> ?/gm, '').replace(/\s?\[\d+\]/g, '')
-const canSpeak = 'speechSynthesis' in window
 /** أساليب شرح بديلة للرد الأخير، كلها من مصادر الدرس نفسها */
 const STYLES = [
   { label: 'بتشبيه من الحياة', text: 'اشرح ما سبق بتشبيه من الحياة اليومية، ثم اربطه بنص الكتاب.' },
@@ -91,6 +91,7 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
   const [picking, setPicking] = useState(false)
   const [speaking, setSpeaking] = useState<string | null>(null)
   const [styles, setStyles] = useState(false)
+  const [moreActs, setMoreActs] = useState(false)
   const ctrl = useRef<AbortController>(null)
   const unmounted = useRef(false)
   const scroller = useRef<HTMLDivElement>(null)
@@ -107,7 +108,7 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
     return () => {
       unmounted.current = true
       ctrl.current?.abort()
-      if (canSpeak) speechSynthesis.cancel()
+      if (canSpeak) stopSpeaking()
     }
   }, [])
 
@@ -288,14 +289,10 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
     toast('حُفظ في المراجعة.')
   }
   const speak = (m: Message) => {
-    speechSynthesis.cancel()
-    if (speaking === m.id) return setSpeaking(null)
-    const u = new SpeechSynthesisUtterance(plain(m.text))
-    u.lang = 'ar'
-    u.voice = speechSynthesis.getVoices().find((v) => v.lang.startsWith('ar')) ?? null
-    u.onend = u.onerror = () => setSpeaking(null)
+    if (speaking === m.id) return (stopSpeaking(), setSpeaking(null))
+    const s = getState().data.settings
     setSpeaking(m.id)
-    speechSynthesis.speak(u)
+    speakText(m.text, { voice: s.voice, rate: s.rate, onEnd: () => setSpeaking(null) })
   }
 
   /** الخطوة التعليمية التالية حسب آخر رد */
@@ -359,13 +356,6 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
               </option>
             ))}
           </select>
-          <div className="segmented level" role="group" aria-label="مستوى الشرح">
-            {(Object.keys(LEVELS) as Level[]).map((l) => (
-              <button key={l} aria-pressed={level === l} title={LEVELS[l].hint} onClick={() => actions.setSettings({ level: l })}>
-                {LEVELS[l].label}
-              </button>
-            ))}
-          </div>
         </div>
       )}
       <div
@@ -534,7 +524,7 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
           )}
           {idle && last?.role === 'assistant' && ready && (
             <div className="chips next-steps">
-              {next(last).map((n) => (
+              {next(last).slice(0, 3).map((n) => (
                 <button key={n.label} className="chip" onClick={() => send(n.ask)}>
                   {n.label}
                 </button>
@@ -576,17 +566,27 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
       <div className="composer-wrap">
         {ready && idle && focus && !openCheck && (
           <div className="lesson-actions" role="group" aria-label="ادرس هذا الدرس">
-            {LESSON_ACTIONS.filter((a) => !(pack && a.task === 'explain')).map((a) => (
-              <button key={a.task} className="chip" onClick={() => send({ text: a.text, task: a.task })}>
+            {/* خيارات الدرس مطوية: لا تزاحم الشرح الجاري، وتظهر عند الطلب */}
+            {!moreActs ? (
+              <button className="chip" aria-expanded={false} onClick={() => setMoreActs(true)}>
+                <WandSparkles aria-hidden="true" /> طرق أخرى لدراسة الدرس…
+              </button>
+            ) : LESSON_ACTIONS.filter((a) => !(pack && a.task === 'explain')).map((a) => (
+              <button key={a.task} className="chip" onClick={() => (setMoreActs(false), send({ text: a.text, task: a.task }))}>
                 <a.icon aria-hidden="true" /> {a.label}
               </button>
             ))}
-            <button className="chip" onClick={() => void make('quiz')}>
-              <ListChecks aria-hidden="true" /> اختبار كامل
-            </button>
-            <button className="chip" onClick={() => void make('cards')}>
-              <Layers aria-hidden="true" /> بطاقات
-            </button>
+            {moreActs && (
+              <>
+                <button className="chip" onClick={() => (setMoreActs(false), void make('quiz'))}>
+                  <ListChecks aria-hidden="true" /> اختبار كامل
+                </button>
+                <button className="chip" onClick={() => (setMoreActs(false), void make('cards'))}>
+                  <Layers aria-hidden="true" /> بطاقات
+                </button>
+                <button className="chip chip-soft" onClick={() => setMoreActs(false)} aria-label="إخفاء الخيارات">إخفاء</button>
+              </>
+            )}
           </div>
         )}
         {ready && idle && !focus && messages.length === 0 && (
