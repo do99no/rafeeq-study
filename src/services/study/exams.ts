@@ -181,7 +181,7 @@ export async function gradePage(bookId: string, page: number, given: string, sub
         ...(shots.length ? { images: shots.map((s) => s.url), imagesNote: `أُرفقت صورة الصفحة ${page} الأصلية: اقرأ الأسئلة منها.` } : {}),
       },
     ],
-    { signal, maxTokens: 3000 },
+    { signal, maxTokens: 6000 },
   ))
     if (ev.type === 'reset') raw = ''
     else if (ev.type === 'text') raw += ev.text

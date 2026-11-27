@@ -43,7 +43,8 @@ const PART: Partial<Record<Task, number>> = { explain: 22_000, teach: 3_200 }
 const BUDGET = 30_000
 /** عدد صور الصفحات المرفقة في كل مهمة */
 const IMAGES: Partial<Record<Task, number>> = { explain: 3, teach: 2, steps: 3, examples: 2, answer: 2, check: 2, grade: 1, compare: 2, summary: 2, points: 2, terms: 1, mistakes: 1 }
-const MAX_TOKENS: Partial<Record<Task, number>> = { explain: 7000, teach: 2500, check: 900, grade: 1500, summary: 6000, points: 5000 }
+// النماذج الحديثة «تفكّر» قبل الرد ويُحتسب تفكيرها من الحد، فالحدود أعلى من طول الرد نفسه
+const MAX_TOKENS: Partial<Record<Task, number>> = { explain: 12000, teach: 4000, check: 2000, grade: 2500, summary: 9000, points: 7000, mistakes: 6000, terms: 5000, compare: 6000, steps: 6000, examples: 5000, answer: 5000 }
 
 const scopeOf = (f: Focus): Scope => ({ bookIds: [f.bookId], pages: { bookId: f.bookId, from: f.from, to: f.to } })
 const key = (h: Hit) => `${h.bookId}#${h.i}`

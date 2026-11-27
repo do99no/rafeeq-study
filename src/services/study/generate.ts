@@ -45,7 +45,7 @@ const MAX_BATCHES = 20
 /** مادة الكتب المعنية، ليتكيف المخرج مع طبيعتها */
 const guideFor = (bookIds: string[]) => subjectGuide(bookIds.map((id) => getState().data.books.find((b) => b.id === id)?.subject))
 
-async function complete(user: string, signal: AbortSignal, maxTokens = 6000, json = false, bookIds: string[] = []): Promise<string> {
+async function complete(user: string, signal: AbortSignal, maxTokens = 10000, json = false, bookIds: string[] = []): Promise<string> {
   const guide = guideFor(bookIds)
   const base = guide ? `${STRICT}\n${guide}` : STRICT
   const system = json ? `${base}\n9. في هذه المهمة أخرج JSON صالحاً فقط، دون أي نص قبله أو بعده.` : base
@@ -110,7 +110,7 @@ export async function makeSummary(scope: Scope, style: SummaryStyle, signal: Abo
   for (const [k, b] of batches.entries()) {
     onProgress?.(k + 1, batches.length)
     const part = batches.length > 1 ? `\nهذا الجزء ${k + 1} من ${batches.length}. لخص هذا الجزء وحده دون مقدمة أو خاتمة.` : ''
-    const raw = await complete(`المقاطع:\n\n${passagesText(b, start)}\n\n---\n${SUMMARY_STYLES[style].ask} اذكر رقم المقطع بعد كل نقطة. إذا لم يرد شيء من المطلوب فاكتب ذلك.${part}`, signal, 6000, false, b.map((h) => h.bookId))
+    const raw = await complete(`المقاطع:\n\n${passagesText(b, start)}\n\n---\n${SUMMARY_STYLES[style].ask} اذكر رقم المقطع بعد كل نقطة. إذا لم يرد شيء من المطلوب فاكتب ذلك.${part}`, signal, 10000, false, b.map((h) => h.bookId))
     const { text, used } = cleanCites(raw.trim(), start + b.length - 1)
     // استشهاد برقم من دفعة أخرى غير صالح
     if (used.some((n) => n >= start)) parts.push(text.replace(/\[(\d+)\]/g, (m, n) => (Number(n) >= start ? m : '')))
@@ -137,7 +137,7 @@ function grounded(item: Record<string, unknown>, hits: Hit[]) {
 
 async function items<T>(ask: string, hits: Hit[], map: (o: Record<string, unknown>) => T | null, signal: AbortSignal): Promise<T[]> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const j = parseJson(await complete(`المقاطع:\n\n${passagesText(hits)}\n\n---\n${ask}`, signal, 7000, true, hits.map((h) => h.bookId)))
+    const j = parseJson(await complete(`المقاطع:\n\n${passagesText(hits)}\n\n---\n${ask}`, signal, 12000, true, hits.map((h) => h.bookId)))
     const list = Array.isArray(j) ? j : j && typeof j === 'object' ? Object.values(j).find(Array.isArray) : null
     const out = (list ?? []).flatMap((o: unknown) => (o && typeof o === 'object' ? (map(o as Record<string, unknown>) ?? []) : [])) as T[]
     if (out.length) return out
@@ -205,7 +205,7 @@ export async function makeMindmap(scope: Scope, title: string, signal: AbortSign
   const hits = sample(await need(scope))
   const ask = `ابنِ خريطة ذهنية للمقاطع: فروع رئيسية (الأفكار الرئيسية)، ثم فروع فرعية، ثم تفاصيل ومصطلحات قصيرة. إذا كانت بين فكرتين علاقة (سبب، نتيجة، نوع من، يقابل) فاكتبها في label الفرع الفرعي مثل «يؤدي إلى: …». الشكل {"children":[{"label":"","children":[{"label":"","n":1,"children":[{"label":"","n":1}]}]}]}. "n" رقم المقطع الذي ورد فيه العنصر. لا تضف ما ليس في المقاطع.`
   for (let attempt = 0; attempt < 2; attempt++) {
-    const j = parseJson(await complete(`المقاطع:\n\n${passagesText(hits)}\n\n---\n${ask}`, signal, 6000, true, hits.map((h) => h.bookId))) as { children?: unknown } | null
+    const j = parseJson(await complete(`المقاطع:\n\n${passagesText(hits)}\n\n---\n${ask}`, signal, 10000, true, hits.map((h) => h.bookId))) as { children?: unknown } | null
     const walk = (v: unknown, depth: number): MindNode[] =>
       !Array.isArray(v) || depth > 4
         ? []
@@ -233,7 +233,7 @@ export async function makeCompare(a: Side, b: Side, signal: AbortSignal): Promis
   if (!ha.length || !hb.length) throw new StudyError(`لم أجد في المصادر ما يكفي عن «${(!ha.length ? a : b).topic}».`)
   const hits = [...new Map([...ha, ...hb].map((h) => [`${h.bookId}#${h.i}`, h])).values()]
   const name = (s: Side, i: string) => s.topic || i
-  const raw = await complete(`المقاطع:\n\n${passagesText(hits)}\n\n---\nقارن بين «${name(a, `الموضوع الأول (المقاطع 1 إلى ${ha.length})`)}» و«${name(b, `الموضوع الثاني (المقاطع من ${ha.length + 1})`)}». اكتب جدول مقارنة Markdown: العمود الأول «وجه المقارنة» ثم عمود لكل طرف، وفي كل خلية رقم المقطع. ثم ### أوجه التشابه في نقاط مع أرقام المقاطع. لا تضف ما ليس في المقاطع.`, signal, 6000, false, hits.map((h) => h.bookId))
+  const raw = await complete(`المقاطع:\n\n${passagesText(hits)}\n\n---\nقارن بين «${name(a, `الموضوع الأول (المقاطع 1 إلى ${ha.length})`)}» و«${name(b, `الموضوع الثاني (المقاطع من ${ha.length + 1})`)}». اكتب جدول مقارنة Markdown: العمود الأول «وجه المقارنة» ثم عمود لكل طرف، وفي كل خلية رقم المقطع. ثم ### أوجه التشابه في نقاط مع أرقام المقاطع. لا تضف ما ليس في المقاطع.`, signal, 10000, false, hits.map((h) => h.bookId))
   const { text, used } = cleanCites(raw.trim(), hits.length)
   if (!used.length) throw new StudyError('لم يقدّم المزود مقارنة موثقة بالمصادر. حاول مرة أخرى.')
   return { kind: 'compare', text, citations: used.map((n) => toCitation(hits[n - 1], n)) }
@@ -244,7 +244,7 @@ export async function gradeAnswer(q: QuizQuestion, given: string, signal: AbortS
   const raw = await complete(
     `المقطع [1]:\n${q.cite.quote}\n\n---\nالسؤال: ${q.q}\nالإجابة النموذجية: ${q.answer}\nإجابة الطالب: ${given}\n\nصحّح إجابة الطالب. السطر الأول بالضبط: «الحكم: صحيحة» أو «الحكم: صحيحة جزئياً» أو «الحكم: خاطئة». ثم في جمل قليلة: ما الصحيح فيما كتب، وما الخطأ أو الناقص ولماذا، ثم الإجابة الصحيحة [1]. اختلاف الصياغة مع صحة المعنى ليس خطأ.`,
     signal,
-    1200,
+    3000,
     false,
     [q.cite.bookId],
   )
@@ -258,7 +258,7 @@ export async function explainMistake(q: QuizQuestion, given: string, signal: Abo
   const raw = await complete(
     `المقطع [1]:\n${q.cite.quote}\n\n---\nالسؤال: ${q.q}${q.options ? `\nالخيارات: ${q.options.join(' | ')}` : ''}\nالإجابة الصحيحة: ${q.answer}\nإجابة الطالب: ${given}\n\nاشرح للطالب بلطف وفي جمل قليلة لماذا إجابته غير صحيحة، ولماذا الصحيحة صحيحة [1]، وكيف يميّز بينهما مستقبلاً.`,
     signal,
-    900,
+    2500,
     false,
     [q.cite.bookId],
   )

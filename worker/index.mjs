@@ -62,7 +62,7 @@ async function pooledChat(b, env, signal, ctx) {
   if (!ok || b.messages.reduce((n, m) => n + imgs(m).length, 0) > MAX_IMAGES) throw new HttpError(400, 'bad_request')
   const r = await poolChat(b, env, ctx, ctx.who, signal, (model, vision, extra) => ({
     // نماذج Gemini الحديثة «تفكّر» قبل الرد ويُحتسب تفكيرها من الحد: 1500 على الأقل كي لا يُبتر الرد
-    model, stream: true, temperature: 0.2, max_tokens: Math.min(Math.max(Number(b.maxTokens) || 4000, 1500), 8000), ...(extra ?? {}),
+    model, stream: true, temperature: 0.2, max_tokens: Math.min(Math.max(Number(b.maxTokens) || 4000, 1500), 16000), ...(extra ?? {}),
     // المزود الذي لا يقرأ الصور يتلقى النص وحده
     messages: vision ? wire(b.messages) : b.messages.map((m) => ({ role: m.role, content: m.content })),
   }))
