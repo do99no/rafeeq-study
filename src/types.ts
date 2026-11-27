@@ -106,6 +106,22 @@ export interface QuizQuestion {
   answer: string
   why: string
   cite: Citation
+  /** مصدر السؤال إن لم يكن من إعداد رفيق (مثل: مذكرة، نموذج امتحان من الكتاب) */
+  origin?: string
+  /** مهمة صفحة كاملة من نموذج امتحان: يجيب الطالب عن أسئلة الصفحة، ويُصحَّح بصورتها */
+  pageTask?: boolean
+}
+/** امتحان أو ورقة عمل أو اختبار مختلط من بنك الأسئلة */
+export interface ExamMeta {
+  mode: 'exam' | 'worksheet' | 'mixed'
+  sourceId?: string
+  subject?: string
+  /** دقائق الحل؛ estimated: ليست من مصدر رسمي */
+  minutes?: number
+  estimated?: boolean
+  marks?: number
+  level?: 'easy' | 'medium' | 'hard'
+  lessons?: string[]
 }
 export type CardType = 'term' | 'question' | 'law' | 'fact' | 'example'
 export interface Flashcard {
@@ -133,7 +149,7 @@ export type OutputData =
   | { kind: 'summary'; text: string; citations: Citation[] }
   | { kind: 'compare'; text: string; citations: Citation[] }
   | { kind: 'note'; text: string; citations: Citation[] }
-  | { kind: 'quiz'; questions: QuizQuestion[] }
+  | { kind: 'quiz'; questions: QuizQuestion[]; meta?: ExamMeta }
   | { kind: 'cards'; cards: Flashcard[]; known: string[] }
   | { kind: 'mindmap'; root: MindNode }
 export type OutputKind = OutputData['kind']

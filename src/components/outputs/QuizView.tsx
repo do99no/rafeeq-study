@@ -132,7 +132,7 @@ export function QuizView({ output, questions, onClose }: { output: StudyOutput; 
           السؤال {num(index + 1)} من {num(total)}، {QUESTION_TYPES[q.type]}
         </p>
         <small className="ai-tag">
-          <Sparkles aria-hidden="true" /> من إعداد رفيق اعتماداً على كتابك
+          <Sparkles aria-hidden="true" /> {q.origin ?? 'من إعداد رفيق اعتماداً على كتابك'}
         </small>
       </div>
       <progress max={total} value={index + (reply?.verdict ? 1 : 0)} aria-label="التقدم في الاختبار" />

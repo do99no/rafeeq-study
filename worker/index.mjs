@@ -128,6 +128,7 @@ async function accounts(request, env, url) {
   const J = (x) => Response.json(x, { headers: { 'cache-control': 'no-store' } })
   if (m === 'GET' && p === '/auth/status') return J(await auth.status(env))
   if (m === 'POST' && p === '/auth/setup') return J(await auth.setup(await jsonBody(request), env))
+  if (m === 'POST' && p === '/auth/salt') return J(await auth.saltOf(await jsonBody(request), env))
   if (m === 'POST' && p === '/auth/login') return J(await auth.login(await jsonBody(request), env, request))
   if (m === 'POST' && p === '/auth/logout') return J(await auth.logout(request, env))
   if (m === 'GET' && p === '/auth/me') {

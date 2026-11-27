@@ -3,9 +3,10 @@ import { ArrowRight, BookOpen, CalendarDays, ChartNoAxesColumn, ClipboardList, H
 import { DailyBars, dur, SplitBars, Trend } from '../components/admin/Charts'
 import { num } from '../lib/format'
 import { go, Link } from '../router'
-import { api, changePassword, logout, ServerError } from '../services/server/account'
+import { adminSetPassword, api, changePassword, logout, ServerError } from '../services/server/account'
 import { toast } from '../store/toast'
 import { AdminAI } from './AdminAI'
+import { coverage, EXAM_SOURCES } from '../services/study/exams'
 
 interface Summary {
   id: string
@@ -34,6 +35,7 @@ interface Summary {
   planLessons: (PlanLesson & { done: boolean })[]
   insights: { kind: string; text: string; topics?: string[] }[]
   synced: number | null
+  training?: { worksheets: number; examAttempts: number; mixed: number; bank: number }
 }
 interface Detail extends Summary {
   daily: { day: string; ms: number }[]
@@ -147,6 +149,7 @@ function StudentCard({ s }: { s: Summary }) {
         <Stat label="دروس مكتملة" value={num(s.lessonsDone)} hint={s.lessonsReview ? `${num(s.lessonsReview)} تحتاج مراجعة` : undefined} />
         <Stat label="اختبارات" value={num(s.quizzes)} hint={s.avgScore !== null ? `متوسط ${num(s.avgScore)}٪` : undefined} />
         <Stat label="بطاقات مستحقة" value={num(s.cards.due)} hint={s.cards.hard ? `${num(s.cards.hard)} صعبة` : undefined} />
+        <Stat label="التدريب" value={`${num(s.training?.examAttempts ?? 0)} امتحانات`} hint={`${num(s.training?.worksheets ?? 0)} أوراق عمل · بنك ${num(s.training?.bank ?? 0)} سؤالاً`} />
         <Stat label="الالتزام بالخطة" value={s.adherence === null ? '—' : `${num(s.adherence)}٪`} hint={s.adherence === null ? 'لا خطة يومية' : 'آخر 7 أيام'} />
       </div>
       <h3 className="mini-h">تطور النتائج</h3>
@@ -186,6 +189,34 @@ function Overview() {
       {err && <p className="warn">{err}</p>}
       {!data && !err && <p className="page-loading">جارٍ التحميل…</p>}
       <div className="admin-grid">{data?.students.map((s) => <StudentCard key={s.id} s={s} />)}</div>
+      <section className="panel">
+        <h2 className="mini-h">المحتوى التدريبي وما ينقص</h2>
+        <p className="muted small">لا امتحان شهادة سابقاً مؤرخاً ولا نموذج إجابة رسمياً في الكتب المتوفرة. المتوفر: {EXAM_SOURCES.map((x) => x.title).join('، ')}.</p>
+        <div className="table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>المادة</th>
+                <th>امتحانات سابقة</th>
+                <th>نماذج</th>
+                <th>بنمط الشهادة</th>
+                <th>ما ينقص</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coverage().map((c) => (
+                <tr key={c.subject}>
+                  <td>{c.subject}</td>
+                  <td>{num(c.past)}</td>
+                  <td>{num(c.model)}</td>
+                  <td>{num(c.style)}</td>
+                  <td>{c.past ? '—' : 'امتحانات السنوات السابقة ونماذج إجابتها الرسمية'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   )
 }
@@ -588,7 +619,7 @@ function AccountTab({ id, name }: { id: string; name: string }) {
     e.preventDefault()
     setBusy(true)
     try {
-      await api('/admin/password', { body: { userId: id, password: pw } })
+      await adminSetPassword(id, pw)
       setPw('')
       toast(`حُددت كلمة مرور ${name}، وانتهت جلساته المفتوحة على الأجهزة الأخرى.`)
     } catch (x) {

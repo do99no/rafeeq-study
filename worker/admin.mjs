@@ -49,6 +49,16 @@ function cardsDue(core, now) {
   return { due, hard, total }
 }
 
+/** التدريب: أوراق العمل، ومحاولات الامتحانات، والاختبارات المختلطة، وحجم بنك الأسئلة */
+function training(core) {
+  const quiz = (core?.outputs ?? []).filter((o) => o.data?.kind === 'quiz')
+  const mode = (o) => o.data.meta?.mode
+  const byId = new Map(quiz.map((o) => [o.id, o]))
+  const attempts = (core?.attempts ?? []).filter((a) => byId.has(a.outputId))
+  const bank = new Set(quiz.flatMap((o) => (o.data.questions ?? []).filter((q) => !q.pageTask).map((q) => q.q)))
+  return { worksheets: quiz.filter((o) => mode(o) === 'worksheet').length, examAttempts: attempts.filter((a) => mode(byId.get(a.outputId)) === 'exam').length, mixed: quiz.filter((o) => mode(o) === 'mixed').length, bank: bank.size }
+}
+
 async function summary(DB, id, full = false) {
   await closeStale(DB, id)
   const now = Date.now()
@@ -121,6 +131,7 @@ async function summary(DB, id, full = false) {
     planLessons,
     insights,
     synced: coreRow?.updated ?? null,
+    training: training(core),
   }
   if (!full) return out
   const daily = Array.from({ length: 30 }, (_, i) => dayOf(now - (29 - i) * DAY)).map((d) => ({ day: d, ms: byDay[d] ?? 0 }))

@@ -1,15 +1,20 @@
 /**
  * حسابات رفيق: مسؤول وطالبان. لا تسجيل من صفحة الدخول، وكلمات المرور يحددها المسؤول.
  *
- * التجزئة: PBKDF2-SHA256 بملح عشوائي لكل مستخدم و«فلفل» سري (PASSWORD_PEPPER) لا يوجد إلا في أسرار الخادم.
- * Argon2id غير عملي في Cloudflare Workers المجانية (حد المعالج نحو 10ms للطلب ولا تتوفر له واجهة أصلية)،
- * و100000 تكرار هي الحد الأعلى الذي تقبله Workers لـ PBKDF2. يكمّل ذلك: قفل الحساب بعد محاولات فاشلة،
- * وحد لكل عنوان IP، وكلمات مرور لا تقل عن 8 أحرف.
+ * التجزئة (المخطط c1): الاشتقاق المكلف في متصفح المستخدم، لا في الخادم:
+ *   proof = PBKDF2-SHA256(كلمة المرور، ملح عشوائي لكل مستخدم، 600000 تكرار)   ← في المتصفح
+ *   المخزَّن = HMAC-SHA256(PASSWORD_PEPPER، proof)                              ← في الخادم (ميكروثوانٍ)
+ * السبب: حد المعالج في Cloudflare Workers المجانية نحو 10ms للطلب، و PBKDF2 بمئة ألف تكرار يحتاج أكثر من 100ms.
+ * الحماية لا تضعف: كلمة المرور لا تصل إلى الخادم؛ تسريب القاعدة وحدها لا يكفي دون الفلفل السري؛ ومع الفلفل
+ * يلزم 600000 تكرار لكل تخمين (أكثر من المخطط السابق). يبقى في الخادم: قفل الحساب بعد 5 محاولات، وحد لكل IP،
+ * وملح وهمي ثابت للحساب غير الموجود كي لا يُعرف وجوده. شرط الطول (8 أحرف) تفرضه الواجهة لأن الخادم لا يرى الكلمة.
  */
 import { all, db, one, run } from './db.mjs'
 import { b64, HttpError, isText, randomToken, same, sha256, unb64 } from './http.mjs'
 
 export const ITERS = 100_000
+/** تكرارات المتصفح في المخطط c1 (توصية OWASP لـ PBKDF2-SHA256) */
+export const CLIENT_ITERS = 600_000
 const SESSION_DAYS = 14
 const IDLE_DAYS = 3
 const MAX_FAILS = 5
@@ -41,10 +46,39 @@ export async function hashPassword(password, env) {
   return { salt, iters, hash: await derive(password, salt, iters, pepperOf(env)) }
 }
 const validPassword = (p) => typeof p === 'string' && [...p].length >= 8 && p.length <= 128
+const B64 = (s, bytes) => typeof s === 'string' && /^[A-Za-z0-9_-]+$/.test(s) && (() => { try { return unb64(s).length === bytes } catch { return false } })()
 
-export async function setPassword(DB, userId, password, env) {
-  if (!validPassword(password)) throw new HttpError(400, 'weak_password')
-  const h = await hashPassword(password, env)
+/** المخزَّن في c1: HMAC بالفلفل فوق برهان المتصفح */
+async function seal1(proof, env) {
+  const hk = await crypto.subtle.importKey('raw', new TextEncoder().encode(pepperOf(env)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  return b64(await crypto.subtle.sign('HMAC', hk, new TextEncoder().encode('c1:' + proof)))
+}
+/** يقبل {salt, proof} من المتصفح (c1)، ويعيد ما يُخزَّن */
+async function fromProof(b, env) {
+  if (!B64(b.salt, 16) || !B64(b.proof, 32)) throw new HttpError(400, 'weak_password')
+  return { salt: b.salt, iters: CLIENT_ITERS, hash: await seal1(b.proof, env) }
+}
+/** يتحقق من كلمة المرور: برهان c1، أو كلمة صريحة لتجزئات المخطط القديم فقط */
+async function verify(u, b, env) {
+  if (u.iters === CLIENT_ITERS) return B64(b.proof, 32) && same(await seal1(b.proof, env), u.hash)
+  return typeof b.password === 'string' && b.password.length <= 128 && (await derive(b.password, u.salt, u.iters, pepperOf(env))) === u.hash
+}
+
+/** الملح والتكرارات قبل الدخول. لحساب غير موجود: ملح وهمي ثابت مشتق من الفلفل (لا يكشف وجود الحساب) */
+export async function saltOf(b, env) {
+  const DB = await needDB(env)
+  const id = isText(b.id, 40) ? b.id : ''
+  const u = id ? await one(DB, 'SELECT salt, iters, hash FROM users WHERE id = ?', id) : null
+  if (u?.hash && u.iters === CLIENT_ITERS) return { salt: u.salt, iters: CLIENT_ITERS }
+  if (u?.hash) return { salt: u.salt, iters: u.iters, legacy: true }
+  const hk = await crypto.subtle.importKey('raw', new TextEncoder().encode(pepperOf(env)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  return { salt: b64(new Uint8Array(await crypto.subtle.sign('HMAC', hk, new TextEncoder().encode('fake-salt:' + id))).slice(0, 16)), iters: CLIENT_ITERS }
+}
+
+export async function setPassword(DB, userId, b, env) {
+  // c1 من المتصفح؛ والكلمة الصريحة (المخطط القديم) للأدوات المحلية فقط
+  const h = b.proof ? await fromProof(b, env) : validPassword(b.password) ? await hashPassword(b.password, env) : null
+  if (!h) throw new HttpError(400, 'weak_password')
   await DB.batch([
     DB.prepare('UPDATE users SET salt = ?, hash = ?, iters = ?, pw_at = ?, failed = 0, locked_until = 0 WHERE id = ?').bind(h.salt, h.hash, h.iters, Date.now(), userId),
     // تغيير كلمة المرور ينهي كل الجلسات القائمة
@@ -107,8 +141,8 @@ export async function setup(b, env) {
   if (!env.SETUP_CODE || env.SETUP_CODE.length < 12) throw new HttpError(503, 'worker_setup')
   if (await one(DB, "SELECT id FROM users WHERE role = 'admin'")) throw new HttpError(409, 'already_setup')
   if (!isText(b.code, 200) || !(await same(b.code, env.SETUP_CODE))) throw new HttpError(401, 'setup_code')
-  if (!validPassword(b.password)) throw new HttpError(400, 'weak_password')
-  const h = await hashPassword(b.password, env)
+  const h = b.proof ? await fromProof(b, env) : validPassword(b.password) ? await hashPassword(b.password, env) : null
+  if (!h) throw new HttpError(400, 'weak_password')
   const now = Date.now()
   await DB.batch([
     DB.prepare('INSERT INTO users (id, role, name, salt, hash, iters, pw_at, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind('admin', 'admin', 'المسؤول', h.salt, h.hash, h.iters, now, now),
@@ -128,11 +162,11 @@ export async function login(b, env, request) {
     // رسالة واحدة لكل الأسباب: لا تكشف هل الحساب موجود
     throw new HttpError(401, 'login')
   }
-  if (!isText(b.id, 40) || typeof b.password !== 'string' || b.password.length > 128) return fail()
+  if (!isText(b.id, 40) || (typeof b.password !== 'string' && typeof b.proof !== 'string')) return fail()
   const u = await one(DB, 'SELECT * FROM users WHERE id = ?', b.id)
   if (!u || !u.hash) return fail()
   if (u.locked_until > now) throw new HttpError(429, 'locked', { retryAfter: Math.ceil((u.locked_until - now) / 1000) })
-  const ok = (await derive(b.password, u.salt, u.iters, pepperOf(env))) === u.hash
+  const ok = await verify(u, b, env)
   if (!ok) {
     const failed = u.failed + 1
     await run(DB, 'UPDATE users SET failed = ?, locked_until = ? WHERE id = ?', failed >= MAX_FAILS ? 0 : failed, failed >= MAX_FAILS ? now + LOCK_MIN * 60_000 : 0, u.id)
@@ -158,8 +192,8 @@ export async function changeOwn(b, env, request) {
   const u = await requireUser(request, env)
   const DB = await needDB(env)
   const row = await one(DB, 'SELECT salt, hash, iters FROM users WHERE id = ?', u.id)
-  if (typeof b.current !== 'string' || (await derive(b.current, row.salt, row.iters, pepperOf(env))) !== row.hash) throw new HttpError(401, 'login')
-  await setPassword(DB, u.id, b.next, env)
+  if (!(await verify(row, { password: b.current, proof: b.currentProof }, env))) throw new HttpError(401, 'login')
+  await setPassword(DB, u.id, b.next !== undefined ? { password: b.next } : b, env)
   return { ok: true }
 }
 
@@ -168,6 +202,6 @@ export async function adminSetPassword(b, env, request) {
   await requireUser(request, env, 'admin')
   const DB = await needDB(env)
   if (!STUDENTS.some((s) => s.id === b.userId) && b.userId !== 'admin') throw new HttpError(400, 'bad_request')
-  await setPassword(DB, b.userId, b.password, env)
+  await setPassword(DB, b.userId, b, env)
   return { ok: true }
 }

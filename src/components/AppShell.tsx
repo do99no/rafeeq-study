@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { BookOpen, ChartNoAxesColumn, Cloud, CloudOff, GraduationCap, House, Library, LogOut, Menu, NotebookTabs, RefreshCw, Settings, Timer, Users } from 'lucide-react'
+import { BookOpen, ChartNoAxesColumn, FileCheck, Cloud, CloudOff, GraduationCap, House, Library, LogOut, Menu, NotebookTabs, RefreshCw, Settings, Timer, Users } from 'lucide-react'
 import { useAccount } from '../services/server/account'
 import { signOut } from '../services/server/session'
 import { useSync } from '../services/server/sync'
@@ -13,6 +13,7 @@ const NAV = [
   { to: '/notebooks', label: 'الدفاتر', icon: NotebookTabs },
   { to: '/library', label: 'المكتبة', icon: Library },
   { to: '/review', label: 'المراجعة', icon: GraduationCap },
+  { to: '/exams', label: 'الامتحانات', icon: FileCheck },
   { to: '/progress', label: 'التقدم', icon: ChartNoAxesColumn },
   { to: '/settings', label: 'الإعدادات', icon: Settings },
 ]

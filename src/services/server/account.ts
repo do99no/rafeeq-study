@@ -107,8 +107,30 @@ export async function initAccounts() {
   }
 }
 
+/**
+ * كلمة المرور لا تغادر الجهاز: يُشتق منها في المتصفح برهان PBKDF2-SHA256 (600000 تكرار) بملح الحساب،
+ * والخادم يحفظ HMAC فوقه بفلفل سري. هكذا يبقى الدخول ضمن حد المعالج في Cloudflare المجانية دون إضعاف الحماية.
+ */
+const b64u = (bytes: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+const unb64u = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
+async function proofOf(password: string, salt: string, iters: number) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password.normalize('NFC')), 'PBKDF2', false, ['deriveBits'])
+  return b64u(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: unb64u(salt), iterations: iters }, base, 256))
+}
+/** ملح جديد وبرهان لكلمة مرور جديدة (8 أحرف على الأقل، يُفحص هنا لأن الخادم لا يرى الكلمة) */
+export async function newSecret(password: string) {
+  if ([...password].length < 8 || password.length > 128) throw new ServerError('weak_password', 400)
+  const salt = b64u(crypto.getRandomValues(new Uint8Array(16)))
+  return { salt, proof: await proofOf(password, salt, 600_000) }
+}
+/** برهان كلمة المرور الحالية لحساب: c1، أو الكلمة نفسها لتجزئات المخطط القديم */
+async function credOf(id: string, password: string): Promise<{ proof?: string; password?: string }> {
+  const s = await api<{ salt: string; iters: number; legacy?: boolean }>('/auth/salt', { body: { id } })
+  return s.legacy ? { password } : { proof: await proofOf(password, s.salt, s.iters) }
+}
+
 export async function login(id: string, password: string) {
-  const r = await api<Session & { user: User }>('/auth/login', { body: { id, password } })
+  const r = await api<Session & { user: User }>('/auth/login', { body: { id, ...(await credOf(id, password)) } })
   const session = { token: r.token, expires: r.expires, user: r.user }
   save('session', session)
   set({ session, mode: 'accounts' })
@@ -125,8 +147,14 @@ export async function logout() {
   await api('/auth/logout', { method: 'POST' }).catch(() => {})
   endLocal()
 }
-export const setupAdmin = (code: string, password: string) => api('/auth/setup', { body: { code, password } })
-export const changePassword = (current: string, next: string) => api('/auth/password', { body: { current, next } })
+export const setupAdmin = async (code: string, password: string) => api('/auth/setup', { body: { code, ...(await newSecret(password)) } })
+export async function changePassword(current: string, next: string) {
+  const me = state.session?.user.id ?? ''
+  const cur = await credOf(me, current)
+  return api('/auth/password', { body: { currentProof: cur.proof, current: cur.password, ...(await newSecret(next)) } })
+}
+/** المسؤول يحدد كلمة مرور طالب: تُشتق في متصفح المسؤول ولا تصل إلى الخادم */
+export const adminSetPassword = async (userId: string, password: string) => api('/admin/password', { body: { userId, ...(await newSecret(password)) } })
 export const refreshStatus = async () => {
   const s = await api<Status>('/auth/status')
   save('accounts', s)

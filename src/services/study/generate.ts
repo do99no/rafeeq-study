@@ -147,7 +147,9 @@ async function items<T>(ask: string, hits: Hit[], map: (o: Record<string, unknow
 
 const COMMON = 'لكل عنصر: "n" رقم المقطع، و"quote" جملة قصيرة منسوخة حرفياً من المقطع نفسه تثبت الإجابة.'
 
-export async function makeQuiz(scope: Scope, types: QuestionType[], count: number, signal: AbortSignal): Promise<OutputData> {
+export const LEVEL_ASK = { easy: 'أسئلة سهلة تقيس التذكر والفهم المباشر.', medium: 'أسئلة متوسطة تجمع الفهم والتطبيق.', hard: 'أسئلة أصعب: تطبيق وتحليل وتعليل وربط بين الأفكار، دون الخروج عن المقاطع.' } as const
+
+export async function makeQuiz(scope: Scope, types: QuestionType[], count: number, signal: AbortSignal, level?: keyof typeof LEVEL_ASK): Promise<OutputData> {
   const hits = sample(await need(scope))
   const shapes: Record<QuestionType, string> = {
     mcq: '{"type":"mcq","q":"","options":["","","",""],"answer":"نص الخيار الصحيح حرفياً","why":"لماذا هو الصحيح ولماذا غيره خطأ","n":1,"quote":""}',
@@ -158,7 +160,7 @@ export async function makeQuiz(scope: Scope, types: QuestionType[], count: numbe
     essay: '{"type":"essay","q":"","answer":"إجابة نموذجية","why":"عناصر الإجابة","n":1,"quote":""}',
     problem: '{"type":"problem","q":"مسألة تطبق قانوناً وارداً في المقطع، بأرقام ووحدات","answer":"خطوات الحل: المعطيات، القانون، التعويض، الناتج بوحدته","why":"القانون المستخدم","n":1,"quote":"نص القانون من المقطع"}',
   }
-  const ask = `اكتب ${count} سؤالاً موزعة على المقاطع، من الأنواع التالية فقط:\n${types.map((t) => shapes[t]).join('\n')}\n${COMMON} كل إجابة يجب أن تكون واردة في المقطع${types.includes('problem') ? '، ولا تكتب مسألة إلا إذا ورد قانونها واضحاً في مقطع' : ''}. أخرج {"items":[...]}`
+  const ask = `${level ? LEVEL_ASK[level] + ' ' : ''}اكتب ${count} سؤالاً موزعة على المقاطع، من الأنواع التالية فقط:\n${types.map((t) => shapes[t]).join('\n')}\n${COMMON} كل إجابة يجب أن تكون واردة في المقطع${types.includes('problem') ? '، ولا تكتب مسألة إلا إذا ورد قانونها واضحاً في مقطع' : ''}. أخرج {"items":[...]}`
   const questions = await items<QuizQuestion>(ask, hits, (o) => {
     const type = o.type as QuestionType
     const q = str(o.q)

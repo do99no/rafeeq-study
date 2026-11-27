@@ -20,10 +20,11 @@ const Library = lazy(() => import('./pages/Library'))
 const Review = lazy(() => import('./pages/Review'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Progress = lazy(() => import('./pages/Progress'))
+const Exams = lazy(() => import('./pages/Exams'))
 const PageViewer = lazy(() => import('./components/PageViewer'))
 const AdminApp = lazy(() => import('./pages/Admin'))
 
-const TITLES: Record<string, string> = { '/notebooks': 'الدفاتر', '/library': 'المكتبة', '/review': 'المراجعة', '/progress': 'التقدم', '/settings': 'الإعدادات' }
+const TITLES: Record<string, string> = { '/notebooks': 'الدفاتر', '/library': 'المكتبة', '/review': 'المراجعة', '/progress': 'التقدم', '/exams': 'الامتحانات والتدريب', '/settings': 'الإعدادات' }
 
 function useDisplaySettings() {
   const { theme, textSize } = useStore((s) => s.data.settings)
@@ -72,7 +73,7 @@ function StudentApp() {
   useEffect(() => {
     if (!student) return
     const book = books.find((b) => b.id === (viewer?.bookId ?? focus?.bookId))
-    setStudying(!!notebookId || !!viewer || path === '/review', book ? { subject: book.subject, bookId: book.id, book: book.title, lesson: viewer ? undefined : focus?.title } : undefined)
+    setStudying(!!notebookId || !!viewer || path === '/review' || path === '/exams', book ? { subject: book.subject, bookId: book.id, book: book.title, lesson: viewer ? undefined : focus?.title } : undefined)
   }, [student, notebookId, viewer, path, focus, books])
   useEffect(() => {
     if (!student || !viewer) return
@@ -96,6 +97,8 @@ function StudentApp() {
     <Notebooks />
   ) : path === '/library' ? (
     <Library />
+  ) : path === '/exams' ? (
+    <Exams />
   ) : path === '/review' ? (
     <Review />
   ) : path === '/progress' ? (
