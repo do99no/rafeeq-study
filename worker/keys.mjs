@@ -129,6 +129,9 @@ async function onError(DB, k, e, model, user) {
   // الحصة وحد الدقيقة يخصان المشروع كله: لا تبديل داخل المزود
   if (code === 'quota') await cool(Math.max(nextReset(k.provider), now + 60_000), 'quota')
   if (code === 'rate') await cool(now + Math.min(Number(e.body?.retryAfter) || 60, 600) * 1000, 'rate')
+  // ازدحام النموذج عند المزود: يُترك ثلاث دقائق لكل الطلبات (لا تطول مهلة حصة أطول منها)
+  if (code === 'server' || code === 'timeout')
+    await run(DB, "INSERT INTO ai_cool (provider, project, model, cool_until, reason) VALUES (?, ?, ?, ?, 'busy') ON CONFLICT(provider, project, model) DO UPDATE SET cool_until = MAX(ai_cool.cool_until, excluded.cool_until), reason = CASE WHEN ai_cool.cool_until > excluded.cool_until THEN ai_cool.reason ELSE 'busy' END", k.provider, k.project, model, now + 180_000)
   // مفتاح معطوب (غير صالح أو ملغى) أو خطأ مؤقت: يُجرَّب مفتاح آخر مرة واحدة
   return { code, sameProvider: code === 'auth' || code === 'server' || code === 'timeout' || code === 'network', stop: code === 'bad_request' || code === 'too_large' }
 }

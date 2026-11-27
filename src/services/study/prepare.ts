@@ -8,6 +8,7 @@ import { api } from '../server/account'
 import { cleanCites, passagesText } from './assistant'
 import type { LessonPack, PackCite, PackNode, PackQuestion, PackStep } from './lessonPack'
 import { pageImages } from './pages'
+import { errataNote, errataOf } from '../../data/errata'
 import { STRICT, subjectGuide, SYMBOLIC } from './prompts'
 
 /**
@@ -137,7 +138,8 @@ export async function prepareLesson(l: Lesson, doc: DocMeta, signal: AbortSignal
   const seenPages = shots.map((x) => x.ref.page)
   const note = `أُرفقت صور الصفحات الأصلية بالترتيب: ${shots.map((x) => `ص ${x.ref.page} (المقطع [${hits.findIndex((h) => h.page === x.ref.page) + 1}])`).join('، ')}. النص المقروء آلياً من هذه الصفحات قد تكون سقطت منه معادلات أو رموز أو رسوم أو تشكيل، فاقرأها من الصورة. ما تقرؤه من صورة صفحة يُستشهد له برقم مقطع تلك الصفحة.`
   const symbolic = SYMBOLIC.has(l.subject)
-  const system = `${STRICT.replace('8. في هذه المهمة لا تضف شيئاً من خارج المقاطع، ولا تستخدم سطور >.', '8. التوضيحات والتشبيهات من عندك مسموحة فقط في سطور تبدأ بـ > وبلا أرقام مقاطع.')}\n${subjectGuide([l.subject])}\n9. أخرج JSON صالحاً فقط، دون أي نص قبله أو بعده، ودون \`\`\`.`
+  const fixes = errataNote(errataOf(l.bookId, s.page, s.endPage))
+  const system = `${STRICT.replace('8. في هذه المهمة لا تضف شيئاً من خارج المقاطع، ولا تستخدم سطور >.', '8. التوضيحات والتشبيهات من عندك مسموحة فقط في سطور تبدأ بـ > وبلا أرقام مقاطع.')}\n${subjectGuide([l.subject])}\n9. أخرج JSON صالحاً فقط، دون أي نص قبله أو بعده، ودون \`\`\`.${fixes ? `\n10. ${fixes}` : ''}`
   const passages = `المقاطع من كتاب «${l.bookTitle}»، درس «${s.title}» (ص ${s.page}–${s.endPage}):\n\n${passagesText(hits)}\n\n---\n`
 
   const max = hits.length

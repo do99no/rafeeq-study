@@ -77,6 +77,7 @@ export function AdminContent() {
         // ثلاثة دروس معاً من الكتاب نفسه (ضمن حد الطلبات في الدقيقة)، والكتب واحداً بعد الآخر
         const queue = [...t.lessons]
         let stop = false
+        let waits = 0
         const worker = async () => {
           for (let s = queue.shift(); s && !stop && !c.signal.aborted; s = queue.shift()) {
             const sec = s
@@ -86,12 +87,24 @@ export function AdminContent() {
               await uploadPack(pack)
               done++
               failed = 0
+              waits = 0
               say(`«${sec.title}» (${t.book.item.title}): ${num(pack.steps.length)} خطوات، ${num(pack.quiz.length)} سؤالاً، ${num(pack.cards.length)} بطاقة${dropped ? `، حُذف ${num(dropped)} بنداً لم يثبت في الكتاب` : ''}`)
               await loadIndex()
             } catch (e) {
               if (c.signal.aborted) return
               if (e instanceof Unavailable) {
-                if (!stop) say('توقف التجهيز: نفدت الحصة المجانية أو الخدمة غير متاحة الآن. أكمل لاحقاً من حيث توقف.')
+                // ازدحام مؤقت عند المزود غالباً: انتظار ثم إعادة الدرس نفسه، والتوقف بعد انتظار طويل بلا فائدة
+                if (waits < 8 && !stop) {
+                  waits++
+                  queue.unshift(sec)
+                  say(`الخدمة مزدحمة أو بلغت حدها مؤقتاً. انتظار ثلاث دقائق ثم المتابعة (${num(waits)} من ٨).`)
+                  await new Promise<void>((r) => {
+                    const t = setTimeout(r, 180_000)
+                    c.signal.addEventListener('abort', () => (clearTimeout(t), r()), { once: true })
+                  })
+                  continue
+                }
+                if (!stop) say('توقف التجهيز: نفدت الحصة المجانية أو بقيت الخدمة غير متاحة. أكمل لاحقاً من حيث توقف.')
                 stop = true
                 return
               }

@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, MessageCircleQuestion, Search, ZoomIn, ZoomO
 import type { PDFDocumentProxy } from 'pdfjs-dist/types/src/display/api'
 import { num } from '../lib/format'
 import { getPdf } from '../services/books/db'
+import { errataOf } from '../data/errata'
 import { useDocs } from '../services/books/process'
 import { scopeChunks, textSearch } from '../services/rag/search'
 import { PASSAGE_ACTIONS, type PassageAction } from '../services/study/prompts'
@@ -170,6 +171,11 @@ export default function PageViewer({ target }: { target: ViewerTarget }) {
         )}
         {bad && <p className="hint">نص هذه الصفحة غير مفهرس، فلن تظهر في البحث.</p>}
         {weak && <p className="hint">بعض رسوم هذه الصفحة أو معادلاتها أو رموزها لم تُقرأ، فاعتمد على صورتها هنا.</p>}
+        {errataOf(bookId, page).map((e) => (
+          <div key={e.page + e.where} className="warn erratum" role="note">
+            <strong>تصحيح موثّق في هذه الصفحة ({e.where}):</strong> في الكتاب «{e.original}»، والصحيح «{e.correct}». <small>{e.proof}</small>
+          </div>
+        ))}
         {fetching && !error && <p className="thinking">يجلب صفحات الكتاب الأصلية إلى هذا الجهاز (مرة واحدة)…</p>}
         {error ? (
           <p className="reader-error">{error}</p>

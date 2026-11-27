@@ -8,6 +8,7 @@ import { cleanCites, passagesText, toCitation } from './assistant'
 import { SUMMARY_STYLES, type SummaryStyle } from './generate'
 import { classify, LESSON_TASKS, norm, topicOf } from './intent'
 import { pageImages, planPages, type PagePlan, type PageRef } from './pages'
+import { errataNote, errataOf } from '../../data/errata'
 import { imagesNote, LEVELS, subjectGuide, SYMBOLIC, TASKS, TUTOR } from './prompts'
 
 export interface Ctx {
@@ -42,9 +43,9 @@ export type TutorEvent =
 const PART: Partial<Record<Task, number>> = { explain: 22_000, teach: 3_200 }
 const BUDGET = 30_000
 /** عدد صور الصفحات المرفقة في كل مهمة */
-const IMAGES: Partial<Record<Task, number>> = { explain: 3, teach: 2, steps: 3, examples: 2, answer: 2, check: 2, grade: 1, compare: 2, summary: 2, points: 2, terms: 1, mistakes: 1 }
+const IMAGES: Partial<Record<Task, number>> = { explain: 3, teach: 2, steps: 4, examples: 3, answer: 3, check: 2, grade: 1, compare: 2, summary: 2, points: 2, terms: 1, mistakes: 1 }
 // النماذج الحديثة «تفكّر» قبل الرد ويُحتسب تفكيرها من الحد، فالحدود أعلى من طول الرد نفسه
-const MAX_TOKENS: Partial<Record<Task, number>> = { explain: 12000, teach: 4000, check: 2000, grade: 2500, summary: 9000, points: 7000, mistakes: 6000, terms: 5000, compare: 6000, steps: 6000, examples: 5000, answer: 5000 }
+const MAX_TOKENS: Partial<Record<Task, number>> = { explain: 12000, teach: 4000, check: 2000, grade: 2500, summary: 9000, points: 7000, mistakes: 6000, terms: 5000, compare: 6000, steps: 10000, examples: 9000, answer: 9000 }
 
 const scopeOf = (f: Focus): Scope => ({ bookIds: [f.bookId], pages: { bookId: f.bookId, from: f.from, to: f.to } })
 const key = (h: Hit) => `${h.bookId}#${h.i}`
@@ -146,6 +147,7 @@ export async function* respond(ask: Ask, history: Message[], ctx: Ctx, signal: A
   let part: { k: number; n: number } | undefined
   let instruction = ''
   const asked = history.flatMap((m) => (m.check ? [m.check.q] : [])).slice(-8)
+  let lessonBased = false
 
   // درس مذكور بالاسم يصبح الدرس الحالي
   // فقط في النص الحر الذي يسمّي درساً، لا في أزرار المتابعة
@@ -220,6 +222,14 @@ export async function* respond(ask: Ask, history: Message[], ctx: Ctx, signal: A
     const prior = short ? await chunksByRef(history.findLast((m) => m.role === 'assistant' && m.basis?.length)?.basis ?? []) : []
     const found = prior.length >= 2 && short ? [] : await find(short && history.length ? `${history.findLast((m) => m.role === 'user')?.text ?? ''} ${ask.text}` : ask.text, ctx, signal)
     hits = uniq([...prior, ...found]).slice(0, 10)
+    // درس مفتوح: سؤال بالرموز والأرقام لا يطابقه البحث في نص مقروء آلياً، فالمرجع صفحات الدرس نفسه وصورها
+    if (focus) {
+      const inLesson = hits.filter((h) => h.bookId === focus!.bookId && h.page >= focus!.from && h.page <= focus!.to)
+      if (inLesson.length < 2) {
+        hits = uniq([...inLesson, ...spread(await lessonChunks(focus), 14_000), ...hits]).slice(0, 14)
+        lessonBased = true
+      }
+    }
     instruction = task === 'examples' ? TASKS.examples(ask.text) : task === 'steps' ? TASKS.steps(ask.text) : TASKS.answer(ask.text)
     if (!hits.length) {
       const near = (await textSearch(ask.text, { bookIds: ctx.bookIds }, 3)).hits
@@ -245,7 +255,7 @@ export async function* respond(ask: Ask, history: Message[], ctx: Ctx, signal: A
   const guide = subjectGuide([focus?.bookId, ...hits.map((h) => h.bookId)].map((id) => (id ? ctx.subjectOf?.(id) : undefined)))
 
   // صفحات سقطت منها معادلات أو رسوم، وصفحات من الدرس بلا نص: تُرفق صورها لمزود يقرأ الصور
-  const range = focus && (LESSON_TASKS.includes(task) || task === 'check') && !ask.basis ? { bookId: focus.bookId, from: focus.from, to: focus.to } : undefined
+  const range = focus && (LESSON_TASKS.includes(task) || task === 'check' || lessonBased) && !ask.basis ? { bookId: focus.bookId, from: focus.from, to: focus.to } : undefined
   const plan = planPages(hits, ctx.docs, (await visionReady()) ? (IMAGES[task] ?? 2) : 0, range, (id) => SYMBOLIC.has(ctx.subjectOf?.(id) ?? ''))
   const shots = plan.attach.length ? await pageImages(plan.attach) : []
   // صفحة بلا نص تصبح مقطعاً يُستشهد به، ومحتواه في صورتها
@@ -256,9 +266,11 @@ export async function* respond(ask: Ask, history: Message[], ctx: Ctx, signal: A
   const left = plan.unread.filter((p) => !shots.some((s) => s.ref.page === p.page && s.ref.bookId === p.bookId))
   const unreadNote = left.length ? `\nصفحات من الدرس بلا نص مقروء: ${left.map((p) => p.page).join('، ')}. لا تتحدث عن محتواها، ونبّه الطالب إلى فتحها في القارئ.` : ''
   let sent = false
+  // أخطاء موثقة في الكتاب نفسه، في صفحات المقاطع أو الدرس
+  const fixes = errataNote([...new Set([...hits.flatMap((h) => errataOf(h.bookId, h.page)), ...(focus ? errataOf(focus.bookId, focus.from, focus.to) : [])])])
 
   const messages: ChatMsg[] = [
-    { role: 'system', content: `${TUTOR}${guide ? `\n${guide}` : ''}\n${LEVELS[ctx.level].ask}${where}` },
+    { role: 'system', content: `${TUTOR}${guide ? `\n${guide}` : ''}\n${LEVELS[ctx.level].ask}${where}${fixes ? `\n${fixes}` : ''}` },
     ...historyMsgs(history),
     {
       role: 'user',

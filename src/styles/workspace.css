@@ -180,3 +180,4 @@ button.mm-node { min-height: 44px; }
   .ws-tabs { margin-top: 0.35rem; }
 }
 .ws-tabs button[aria-selected='true'] { background: var(--surface); color: var(--brand-ink); font-weight: 600; box-shadow: 0 1px 3px rgb(41 35 58 / 12%); }
+.erratum { margin: 0.5rem auto; max-width: 900px; line-height: 1.7; } .erratum small { display: block; color: var(--ink-2); }
