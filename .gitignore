@@ -13,3 +13,4 @@ public/vendor
 /books-alt/
 *.tsbuildinfo
 worker/.local
+/scripts/.tmp/
