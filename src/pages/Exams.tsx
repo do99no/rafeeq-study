@@ -494,14 +494,121 @@ function BankTab({ run }: { run: (o: QuizOutput) => void }) {
   )
 }
 
+/** خلط ثابت العدد دون تكرار */
+const shuffle = <T,>(a: T[]) => a.map((x) => ({ x, r: Math.random() })).sort((p, q) => p.r - q.r).map((p) => p.x)
+/** يأخذ من كل مجموعة حتى n بالتناوب، فلا يطغى درس على غيره */
+function spread<T>(groups: T[][], n: number): T[] {
+  const gs = groups.map((g) => shuffle(g))
+  const out: T[] = []
+  for (let i = 0; out.length < n && gs.some((g) => i < g.length); i++) for (const g of gs) if (i < g.length && out.length < n) out.push(g[i])
+  return out
+}
+
+/** التقييمات من أسئلة الدروس الجاهزة: لا تحتاج خدمة الذكاء الاصطناعي */
+function AssessTab({ run }: { run: (o: QuizOutput) => void }) {
+  const data = useData()
+  const ready = useReadyQuestions().filter((r) => r.kind === 'quiz' && !r.q.flag)
+  const subjects = [...new Set(ready.map((r) => r.subject))]
+  const [subject, setSubject] = useState('')
+  const sub = subject || subjects[0] || ''
+  const inSub = ready.filter((r) => r.subject === sub)
+  const units = [...new Map(inSub.map((r) => [`${r.bookId}|${r.unit || r.lesson}`, { book: r.q.cite.bookTitle, unit: r.unit || r.lesson }])).entries()]
+  const [unitKey, setUnitKey] = useState('')
+  const uk = unitKey && units.some(([k]) => k === unitKey) ? unitKey : units[0]?.[0] ?? ''
+  const byLesson = (list: typeof ready) => [...list.reduce((m, r) => m.set(r.lesson, [...(m.get(r.lesson) ?? []), r]), new Map<string, typeof ready>()).values()]
+  const start = (title: string, list: typeof ready, minutes: number, note: string) => {
+    if (!list.length) return toast('لا أسئلة جاهزة كافية لهذا التقييم بعد.')
+    run(save(title, list[0].bookId, list.map((r) => r.q), { mode: 'mixed', subject: list[0].subject, minutes, estimated: true, marks: list.length, lessons: [...new Set(list.map((r) => r.lesson))] }))
+    toast(note)
+  }
+  // تشخيصي: سؤال سهل وآخر متوسط من كل درس (حتى ٣٠)، ليعرف الطالب من أين يبدأ
+  const placement = () => {
+    const groups = byLesson(inSub).map((g) => [...shuffle(g.filter((r) => r.level === 'easy')).slice(0, 1), ...shuffle(g.filter((r) => r.level === 'medium')).slice(0, 1)])
+    const list = spread(groups, 30)
+    start(`اختبار تشخيصي: ${sub}`, list, Math.round(list.length * 1.5), 'بعد الحل ستظهر الدروس التي تحتاج إليها أكثر في نتيجتك.')
+  }
+  const unit = () => {
+    const u = units.find(([k]) => k === uk)?.[1]
+    const list = spread(byLesson(inSub.filter((r) => `${r.bookId}|${r.unit || r.lesson}` === uk && r.level !== 'easy')), 20)
+    start(`اختبار وحدة: ${u?.unit ?? ''}`, list, list.length * 2, 'اختبار الوحدة من الأسئلة المتوسطة والصعبة في دروسها.')
+  }
+  // محاكاة زمنية: أسئلة من كل الوحدات بكل المستويات وبزمن محدد؛ ليست امتحاناً رسمياً
+  const simulation = () => {
+    const groups = [...inSub.reduce((m, r) => m.set(r.unit || r.lesson, [...(m.get(r.unit || r.lesson) ?? []), r]), new Map<string, typeof ready>()).values()]
+    const list = spread(groups, 40)
+    start(`محاكاة امتحان: ${sub}`, list, Math.max(30, Math.round(list.length * 2.25)), 'محاكاة بزمن محدد من أسئلة رفيق؛ ليست امتحاناً رسمياً ولا من سنة سابقة.')
+  }
+  // علاجي: أسئلة جديدة من الدروس التي أخطأ فيها الطالب ولم يتجاوز خطأه
+  const weakLessons = new Set(data.mistakes.filter((m) => !m.resolved).map((m) => lessonOf(m.bookId, m.page)?.title).filter((x): x is string => !!x))
+  const remedial = () => {
+    const seen = new Set(data.mistakes.map((m) => normalize(m.q)))
+    const list = spread(byLesson(ready.filter((r) => weakLessons.has(r.lesson) && !seen.has(normalize(r.q.q)))), 15)
+    start('اختبار علاجي من نقاط ضعفي', list, list.length * 2, 'أسئلة جديدة من الدروس التي أخطأت فيها، لا الأسئلة نفسها.')
+  }
+  if (!ready.length) return <p className="muted panel">التقييمات تُبنى من المحتوى الجاهز للدروس، وهو قيد الإعداد.</p>
+  return (
+    <section className="panel form" aria-labelledby="assess-h">
+      <h3 className="mini-h" id="assess-h">التقييمات</h3>
+      <p className="muted">تُبنى من أسئلة الدروس الجاهزة (بنموذج إجابة ومصدر لكل سؤال)، دون انتظار أي خدمة. الأسئلة التي عليها «تحتاج مراجعة» لا تدخلها. الأزمنة تقديرية.</p>
+      <label className="field">
+        <span>المادة</span>
+        <select className="input" value={sub} onChange={(e) => (setSubject(e.target.value), setUnitKey(''))}>
+          {subjects.map((x) => (
+            <option key={x} value={x}>
+              {x}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="assess-grid">
+        <article className="assess">
+          <h4>تشخيصي</h4>
+          <p className="muted small">سؤالان من كل درس جاهز، لتعرف أين تقف قبل أن تخطط.</p>
+          <button className="btn btn-primary" onClick={placement}>
+            <Play aria-hidden="true" /> ابدأ
+          </button>
+        </article>
+        <article className="assess">
+          <h4>اختبار وحدة</h4>
+          <select className="input" aria-label="الوحدة" value={uk} onChange={(e) => setUnitKey(e.target.value)}>
+            {units.map(([k, u]) => (
+              <option key={k} value={k}>
+                {u.unit} ({u.book})
+              </option>
+            ))}
+          </select>
+          <button className="btn btn-primary" onClick={unit}>
+            <Play aria-hidden="true" /> ابدأ
+          </button>
+        </article>
+        <article className="assess">
+          <h4>محاكاة بزمن</h4>
+          <p className="muted small">حتى ٤٠ سؤالاً من كل الوحدات بزمن محدد. ليست امتحاناً رسمياً.</p>
+          <button className="btn btn-primary" onClick={simulation}>
+            <Play aria-hidden="true" /> ابدأ
+          </button>
+        </article>
+        <article className="assess">
+          <h4>علاجي</h4>
+          <p className="muted small">{weakLessons.size ? `من ${num(weakLessons.size)} درساً أخطأت فيها.` : 'يظهر بعد أن تخطئ في سؤال؛ أخطاؤك تُسجل تلقائياً.'}</p>
+          <button className="btn btn-primary" disabled={!weakLessons.size} onClick={remedial}>
+            <Play aria-hidden="true" /> ابدأ
+          </button>
+        </article>
+      </div>
+    </section>
+  )
+}
+
 const TABS = [
+  { id: 'assess', label: 'التقييمات', icon: Target },
   { id: 'exams', label: 'امتحانات الشهادة', icon: Archive },
   { id: 'sheets', label: 'أوراق العمل', icon: ClipboardList },
   { id: 'bank', label: 'بنك الأسئلة', icon: Database },
 ] as const
 
 export default function Exams() {
-  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('exams')
+  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('assess')
   const [running, setRunning] = useState<QuizOutput | null>(null)
   return (
     <div className="page">
@@ -521,6 +628,7 @@ export default function Exams() {
               </button>
             ))}
           </nav>
+          {tab === 'assess' && <AssessTab run={setRunning} />}
           {tab === 'exams' && <ExamsTab run={setRunning} />}
           {tab === 'sheets' && <WorksheetsTab run={setRunning} />}
           {tab === 'bank' && <BankTab run={setRunning} />}
