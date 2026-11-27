@@ -10,6 +10,7 @@ import { Link } from '../router'
 import { isSearchable, useDocs } from '../services/books/process'
 import { useData, useStore } from '../store/store'
 import type { Focus, Task } from '../types'
+import { PlanCard } from '../components/PlanCard'
 
 const START: { label: string; text: string; task: Task; icon: typeof Target; hint: string }[] = [
   { label: 'اشرح لي الدرس', text: 'اشرح لي هذا الدرس من البداية', task: 'explain', icon: BookOpenCheck, hint: 'شرح منظم كامل' },
@@ -48,6 +49,7 @@ export function Home() {
         </div>
       </header>
 
+      <PlanCard />
       <section className="start panel" aria-labelledby="start-h">
         <h2 id="start-h">
           <Target aria-hidden="true" /> ابدأ الدراسة

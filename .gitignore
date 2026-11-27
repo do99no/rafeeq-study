@@ -12,3 +12,4 @@ public/vendor
 /books-work/
 /books-alt/
 *.tsbuildinfo
+worker/.local

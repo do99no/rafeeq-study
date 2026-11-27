@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { logEvent, setTask } from '../../services/server/tracker'
 import { Pencil } from 'lucide-react'
 import { actions } from '../../store/store'
 import { toast } from '../../store/toast'
@@ -41,6 +42,12 @@ function NoteView({ output, text, onDone }: { output: StudyOutput; text: string;
 export default function OutputDialog({ output, onClose }: { output: StudyOutput; onClose: () => void }) {
   const { data } = output
   const [editing, setEditing] = useState(false)
+  // وقت المراجعة يُنسب إلى نوعها
+  useEffect(() => {
+    setTask(data.kind === 'quiz' ? 'quiz' : data.kind === 'cards' ? 'cards' : 'review')
+    logEvent('output_open', output.title)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [output.id])
   return (
     <Dialog variant="wide" title={output.title} onClose={onClose}>
       {(data.kind === 'summary' || data.kind === 'compare') &&

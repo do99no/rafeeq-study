@@ -89,6 +89,24 @@ async function updateIndex(code: string, item: LibraryItem) {
   return true
 }
 
+/** فهارس دروس الكتب كلها من ملفات الفهرس الصغيرة (دون تنزيل الكتب)، لاختيار دروس الخطة */
+export async function lessonCatalog(code: string) {
+  const items = await openLibrary(code)
+  return Promise.all(
+    items.map(async (item) => {
+      let sections: { id: string; title: string; level: 1 | 2; page: number; endPage: number }[] = []
+      if (item.idx) {
+        const res = await fetch(url(item.idx))
+        if (res.ok) {
+          const plain = await unseal(code, await res.arrayBuffer())
+          sections = (await new Response(new Blob([plain]).stream().pipeThrough(new DecompressionStream('gzip'))).json()).meta?.sections ?? []
+        }
+      }
+      return { id: item.id, title: item.title, subject: item.subject, sections }
+    }),
+  )
+}
+
 let syncing: Promise<number> | undefined
 /** عند فتح التطبيق: يحدّث فهارس الكتب المنزّلة ويكمل مادة كل كتاب. يعيد عدد الكتب المحدَّثة. */
 export function syncLibrary(): Promise<number> {

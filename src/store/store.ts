@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { Book, Flashcard, Focus, Message, Mistake, Notebook, Profile, QuizAttempt, Settings, StudentData, Studied, StudyOutput } from '../types'
 import { emptyData, migrateV1 } from '../data/empty'
-import { isOurKey, load, loadOld, save } from '../services/storage/local'
+import { isOurKey, load, loadOld, removePrefix, save } from '../services/storage/local'
 import { toast } from './toast'
 
 interface AppState {
@@ -46,10 +46,16 @@ const subscribe = (l: () => void) => {
   return () => void listeners.delete(l)
 }
 
+/** يُبلَّغ بكل تعديل من الطالب (للمزامنة مع الخادم وسجل النشاط) */
+const changeHandlers = new Set<(before: StudentData, after: StudentData) => void>()
+export const onDataChange = (f: (before: StudentData, after: StudentData) => void) => void changeHandlers.add(f)
+
 function setData(fn: (d: StudentData) => StudentData) {
+  const before = state.data
   state = { ...state, data: fn(state.data) }
   if (!save(`data:${state.activeId}`, state.data)) toast('تعذّر الحفظ. مساحة تخزين المتصفح ممتلئة أو غير متاحة.')
   emit()
+  if (before !== state.data) changeHandlers.forEach((h) => h(before, state.data))
 }
 function setApp(patch: Partial<Pick<AppState, 'profiles' | 'activeId'>>) {
   state = { ...state, ...patch }
@@ -99,7 +105,36 @@ export interface Snapshot {
 const snapshot = () => save(`backup:${state.activeId}`, { at: Date.now(), data: state.data } satisfies Snapshot)
 export const readSnapshot = (id: string) => load<Snapshot>(`backup:${id}`)
 
+/** حساب على الخادم: معرّف الملف المحلي u:<المعرّف> */
+export const accountProfile = (userId: string) => `u:${userId}`
+
 export const actions = {
+  /** الدخول بحساب: ملف مستقل على هذا الجهاز، نسخة مؤقتة من بيانات الخادم */
+  enterAccount(user: { id: string; name: string }) {
+    const id = accountProfile(user.id)
+    // ملفات الوضع السابق على هذا الجهاز: تُعرض لاحقاً ليختار الطالب ملفه
+    if (!state.activeId.startsWith('u:')) save('local-profiles', { profiles: state.profiles })
+    setApp({ profiles: [{ id, name: user.name }], activeId: id })
+    state = { ...state, data: readData(id) }
+    emit()
+  },
+  /** عند الخروج تُمسح بيانات الطالب من الجهاز (تبقى على الخادم) */
+  leaveAccount() {
+    const id = state.activeId
+    if (!id.startsWith('u:')) return
+    removePrefix(`data:${id}`)
+    removePrefix(`backup:${id}`)
+    removePrefix(`sync:${id}`)
+    setApp({ profiles: [], activeId: 'u:' })
+    state = { ...state, data: emptyData() }
+    emit()
+  },
+  /** بيانات وصلت من الخادم: تُحفظ دون أن تُعتبر تعديلاً جديداً */
+  applyRemote(data: StudentData) {
+    state = { ...state, data: withDefaults(data) }
+    save(`data:${state.activeId}`, state.data)
+    emit()
+  },
   createNotebook(input: NotebookInput) {
     const now = Date.now()
     const nb: Notebook = { ...input, id: uid(), favorite: false, createdAt: now, lastOpenedAt: now }

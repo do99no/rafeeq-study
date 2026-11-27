@@ -6,6 +6,47 @@ import { emptyData, parseBackup } from '../data/empty'
 import { ago } from '../lib/format'
 import { actions, getState, readSnapshot, useStore } from '../store/store'
 import { toast } from '../store/toast'
+import { changePassword, ServerError, useAccount } from '../services/server/account'
+import { signOut } from '../services/server/session'
+
+/** حساب الطالب: كلمة المرور، والخروج، وما يُسجَّل عنه */
+function AccountSection() {
+  const [cur, setCur] = useState('')
+  const [next, setNext] = useState('')
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      await changePassword(cur, next)
+      toast('تغيّرت كلمة المرور. ادخل من جديد بكلمتك الجديدة.')
+      await signOut()
+    } catch (x) {
+      toast(x instanceof ServerError && x.code === 'weak_password' ? 'كلمة المرور يجب ألا تقل عن 8 أحرف.' : x instanceof ServerError && x.code === 'network' ? 'تعذّر الاتصال بالخادم.' : 'كلمة المرور الحالية غير صحيحة.')
+    }
+  }
+  return (
+    <section className="panel">
+      <h2>حسابي</h2>
+      <p className="muted">بياناتك ومحادثاتك محفوظة في حسابك على الخادم ولا يصل إليها الطالب الآخر. يطّلع المسؤول على نشاطك الدراسي ومحادثاتك ونتائجك ليتابع تقدمك.</p>
+      <p className="muted">يُسجَّل: وقت الدراسة الفعلي (حين تكون صفحة الدراسة ظاهرة وأنت تتفاعل معها)، ومرات إخفاء الصفحة والعودة وانقطاع الاتصال، والدروس والشروح والاختبارات ونتائجها. لا يُسجَّل ما تكتبه على لوحة المفاتيح، ولا الصوت ولا الكاميرا ولا صور الشاشة.</p>
+      <form className="form" onSubmit={save}>
+        <label className="field">
+          <span>كلمة المرور الحالية</span>
+          <input type="password" value={cur} onChange={(e) => setCur(e.target.value)} required autoComplete="current-password" />
+        </label>
+        <label className="field">
+          <span>كلمة المرور الجديدة (8 أحرف على الأقل)</span>
+          <input type="password" value={next} onChange={(e) => setNext(e.target.value)} minLength={8} required autoComplete="new-password" />
+        </label>
+        <div className="btn-row">
+          <button className="btn btn-primary">تغيير كلمة المرور</button>
+          <button type="button" className="btn" onClick={() => void signOut()}>
+            تسجيل الخروج
+          </button>
+        </div>
+      </form>
+    </section>
+  )
+}
 
 function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void }) {
   return (
@@ -47,6 +88,7 @@ export default function Settings() {
   const [incoming, setIncoming] = useState(emptyData)
   const file = useRef<HTMLInputElement>(null)
   const snap = readSnapshot(activeId)
+  const account = !!useAccount().session
 
   return (
     <div className="page page-narrow">
@@ -67,7 +109,8 @@ export default function Settings() {
 
       <ServicesPanel />
 
-      <section className="panel">
+      {account && <AccountSection />}
+      {!account && <section className="panel">
         <h2>الطالبان</h2>
         <p className="muted">لكل طالب دفاتره وكتبه وإعداداته. الفصل هنا للتنظيم داخل هذا المتصفح، وليس حماية بكلمة مرور.</p>
         {profiles.map((p) => (
@@ -98,7 +141,7 @@ export default function Settings() {
             )}
           </div>
         ))}
-      </section>
+      </section>}
 
       <section className="panel">
         <h2>بيانات الطالب الحالي</h2>

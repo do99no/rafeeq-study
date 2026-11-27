@@ -24,7 +24,13 @@ let config: Config = {
 }
 let health: Record<string, Health> = load('ai-health') ?? {}
 let infos: ProviderInfo[] = []
-let service: { state: 'unset' | 'checking' | 'ok' | 'error'; code?: ErrorCode } = { state: config.url && config.code ? 'checking' : 'unset' }
+/** جلسة حساب الطالب تكفي للوصول إلى الذكاء الاصطناعي، دون رمز الوصول المشترك */
+const sessionTok = () => {
+  const s = load<{ token: string; expires: number }>('session')
+  return s && s.expires > Date.now() ? s.token : null
+}
+const authorized = () => !!config.url && (!!config.code || !!sessionTok())
+let service: { state: 'unset' | 'checking' | 'ok' | 'error'; code?: ErrorCode } = { state: authorized() ? 'checking' : 'unset' }
 
 let snapshot = { config, health, infos, service }
 const listeners = new Set<() => void>()
@@ -82,7 +88,7 @@ async function call(path: string, body: unknown, signal: AbortSignal): Promise<R
   try {
     res = await fetch(url + path, {
       method: body ? 'POST' : 'GET',
-      headers: { authorization: `Bearer ${encodeURIComponent(config.code)}`, ...(body ? { 'content-type': 'application/json' } : {}) },
+      headers: { authorization: sessionTok() ? `Bearer s:${sessionTok()}` : `Bearer ${encodeURIComponent(config.code)}`, ...(body ? { 'content-type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal,
     })
@@ -157,7 +163,7 @@ export async function visionReady() {
 /** يفحص الوسيط فقط؛ لا يستهلك حصة أي مزود. */
 export async function refresh(manual = false) {
   if (manual) resetHealth()
-  if (!config.url || !config.code) {
+  if (!authorized()) {
     infos = []
     service = { state: 'unset' }
     return emit()

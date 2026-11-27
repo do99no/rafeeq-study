@@ -12,6 +12,8 @@ import { actions, chatOf, getState, uid, useData } from '../../store/store'
 import { toast } from '../../store/toast'
 import type { Book, Focus, Level, Message, Notebook, StudyOutput, Task } from '../../types'
 import { RichText } from '../RichText'
+import { activity, logEvent, setTask } from '../../services/server/tracker'
+import { classify } from '../../services/study/intent'
 import { LessonPicker } from './LessonPicker'
 import { PagesNote } from './PagesNote'
 
@@ -81,6 +83,10 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
 
   const ask = async (a: Ask, history: Message[]) => {
     const c = (ctrl.current = new AbortController())
+    // سجل تعليمي: نوع الطلب فقط، لا نصه
+    const kind = a.grade ? 'grade' : a.basis?.length ? 'paragraph' : (a.task ?? classify(a.text))
+    setTask(kind === 'explain' ? 'explain' : kind === 'teach' ? 'teach' : kind === 'check' || kind === 'grade' ? 'check' : kind === 'summary' ? 'summary' : 'answer')
+    if (kind === 'explain' || kind === 'teach' || kind === 'paragraph') logEvent(kind)
     const profileId = getState().activeId
     const nb = getState().data.notebooks.find((n) => n.id === notebook.id) ?? notebook
     let f = nb.focus && activeIds.includes(nb.focus.bookId) ? nb.focus : undefined
@@ -90,7 +96,11 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
     try {
       for await (const ev of respond(a, history, { bookIds: activeIds, focus: f, docs, level: getState().data.settings.level, titleOf, subjectOf }, c.signal)) {
         if (unmounted.current || getState().activeId !== profileId) return
-        if (ev.type === 'text') setStreaming((text += ev.text))
+        if (ev.type === 'text') {
+          setStreaming((text += ev.text))
+          // قراءة الرد أثناء وصوله نشاط دراسي
+          activity()
+        }
         else if (ev.type === 'reset') setStreaming((text = ''))
         else if (ev.type === 'status') setStatus(ev.text)
         else if (ev.type === 'focus') {

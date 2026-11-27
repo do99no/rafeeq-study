@@ -24,3 +24,19 @@ export function save(key: string, value: unknown): boolean {
 
 /** مفاتيح بيانات الطلاب فقط؛ إعدادات الذكاء الاصطناعي لا تعيد بناء الحالة */
 export const isOurKey = (key: string | null) => key === null || key === `${PREFIX}app` || key.startsWith(`${PREFIX}data:`)
+
+export function remove(key: string) {
+  try {
+    localStorage.removeItem(PREFIX + key)
+  } catch {
+    /* تخزين غير متاح */
+  }
+}
+/** كل المفاتيح التي تبدأ بهذا الجزء (لمسح بيانات طالب من الجهاز) */
+export function removePrefix(part: string) {
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith(PREFIX + part)) localStorage.removeItem(k)
+  } catch {
+    /* تخزين غير متاح */
+  }
+}

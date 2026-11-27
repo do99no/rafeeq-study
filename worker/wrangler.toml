@@ -1,8 +1,20 @@
-# للنشر لاحقاً بموافقة صاحب المشروع. المفاتيح عبر: wrangler secret put اسم_المفتاح
+# للنشر بموافقة صاحب المشروع وبحسابه. الأسرار عبر: wrangler secret put اسم_السر
+# الأسرار: PASSWORD_PEPPER و SETUP_CODE (للحسابات)، ACCESS_CODE و GEMINI_API_KEY (للذكاء الاصطناعي)، LIBRARY_CODE (اختياري)
 name = "rafeeq-ai"
 main = "index.mjs"
 compatibility_date = "2026-11-01"
 workers_dev = true
 
 [vars]
-ALLOWED_ORIGINS = "http://localhost:5173"
+ALLOWED_ORIGINS = "https://do99no.github.io,http://localhost:5173"
+
+# قاعدة بيانات الحسابات والمتابعة. تُنشأ مرة واحدة: npx wrangler d1 create rafeeq
+# ثم يوضع database_id الناتج هنا. الجداول تُنشأ تلقائياً عند أول طلب (worker/db.mjs).
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "rafeeq"
+# database_id = "..."
+
+# نسخ احتياطي يومي لبيانات الطالبين (الساعة 02:00 بتوقيت السودان)
+[triggers]
+crons = ["0 0 * * *"]

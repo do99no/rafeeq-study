@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { AppShell } from './components/AppShell'
 import { Toast } from './components/Toast'
 import { Home } from './pages/Home'
@@ -8,6 +8,11 @@ import { toast } from './store/toast'
 import { num } from './lib/format'
 import { getState, useStore } from './store/store'
 import { openPage, useViewer } from './store/viewer'
+import { initAccounts, useAccount } from './services/server/account'
+import { beginStudent } from './services/server/session'
+import { logEvent, setStudying, setTask } from './services/server/tracker'
+import { Login, Setup } from './pages/Login'
+import { ImportLocal } from './components/ImportLocal'
 
 const Notebooks = lazy(() => import('./pages/Notebooks'))
 const Workspace = lazy(() => import('./pages/Workspace'))
@@ -16,6 +21,7 @@ const Review = lazy(() => import('./pages/Review'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Progress = lazy(() => import('./pages/Progress'))
 const PageViewer = lazy(() => import('./components/PageViewer'))
+const AdminApp = lazy(() => import('./pages/Admin'))
 
 const TITLES: Record<string, string> = { '/notebooks': 'الدفاتر', '/library': 'المكتبة', '/review': 'المراجعة', '/progress': 'التقدم', '/settings': 'الإعدادات' }
 
@@ -36,7 +42,7 @@ function useDisplaySettings() {
   }, [theme, textSize])
 }
 
-export function App() {
+function StudentApp() {
   useDisplaySettings()
   const path = usePath()
   const profileId = useStore((s) => s.activeId)
@@ -59,6 +65,21 @@ export function App() {
     void resumePending(getState().data.books.map((b) => b.id), profileId)
   }, [profileId])
 
+  // وقت الدراسة: داخل دفتر أو القارئ أو المراجعة فقط
+  const student = useAccount().session?.user.role === 'student'
+  const focus = useStore((s) => s.data.notebooks.find((n) => n.id === notebookId)?.focus)
+  const books = useStore((s) => s.data.books)
+  useEffect(() => {
+    if (!student) return
+    const book = books.find((b) => b.id === (viewer?.bookId ?? focus?.bookId))
+    setStudying(!!notebookId || !!viewer || path === '/review', book ? { subject: book.subject, bookId: book.id, book: book.title, lesson: viewer ? undefined : focus?.title } : undefined)
+  }, [student, notebookId, viewer, path, focus, books])
+  useEffect(() => {
+    if (!student || !viewer) return
+    setTask('read')
+    logEvent('read_page', `ص ${viewer.page}`, { bookId: viewer.bookId, book: books.find((b) => b.id === viewer.bookId)?.title })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [student, viewer?.bookId, viewer?.page])
   const title = notebookTitle ?? TITLES[path]
   useEffect(() => {
     document.title = title ? `${title} | رفيق` : 'رفيق | مساعدك الدراسي'
@@ -99,6 +120,44 @@ export function App() {
         </Suspense>
       )}
       <Toast />
+    </>
+  )
+}
+
+/** البوابة: الوضع المحلي كما كان، أو الحسابات (دخول، مسؤول، طالب) */
+export function App() {
+  const acct = useAccount()
+  const path = usePath()
+  const [needImport, setNeedImport] = useState(false)
+  useEffect(() => {
+    void initAccounts()
+  }, [])
+  const user = acct.session?.user
+  useEffect(() => {
+    if (user?.role !== 'student') return
+    void beginStudent(user).then((r) => setNeedImport(r.empty))
+  }, [user?.id, user?.role])
+  if (acct.mode === 'checking' && !acct.session) return <div className="page-loading" role="status">جارٍ التحميل…</div>
+  if (acct.mode === 'accounts' && !user)
+    return (
+      <>
+        {acct.status?.setup ? <Setup onDone={() => {}} /> : <Login status={acct.status ?? { accounts: true }} onDone={() => {}} />}
+        <Toast />
+      </>
+    )
+  if (user?.role === 'admin')
+    return (
+      <>
+        <Suspense fallback={<div className="page-loading">جارٍ التحميل…</div>}>
+          <AdminApp path={path} />
+        </Suspense>
+        <Toast />
+      </>
+    )
+  return (
+    <>
+      <StudentApp />
+      {needImport && <ImportLocal onClose={() => setNeedImport(false)} />}
     </>
   )
 }

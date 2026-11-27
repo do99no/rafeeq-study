@@ -1,4 +1,5 @@
 import { ArrowLeft, Check, ChartNoAxesColumn, MessageCircleQuestion } from 'lucide-react'
+import { logEvent } from '../services/server/tracker'
 import { isDue, mastered, normalCards } from '../components/outputs/CardsView'
 import { CiteLink } from '../components/RichText'
 import { EmptyState } from '../components/EmptyState'
@@ -84,7 +85,7 @@ export default function Progress() {
                     <CiteLink cite={{ n: 1, bookId: m.bookId, bookTitle: m.bookTitle, page: m.page, quote: m.q, chunk: 0 }} />
                   </div>
                   <div className="weak-actions">
-                    <button className="btn btn-sm btn-primary" onClick={() => startStudy(m.bookId, undefined, { text: `راجع معي «${m.topic}»، فقد أخطأت في: ${list.slice(0, 3).map((x) => x.q).join('، ')}`, task: 'answer' })}>
+                    <button className="btn btn-sm btn-primary" onClick={() => (logEvent('weak_revisit', m.topic, { lesson: m.topic, book: m.bookTitle, bookId: m.bookId }), startStudy(m.bookId, undefined, { text: `راجع معي «${m.topic}»، فقد أخطأت في: ${list.slice(0, 3).map((x) => x.q).join('، ')}`, task: 'answer' }))}>
                       <MessageCircleQuestion aria-hidden="true" /> راجعه مع رفيق
                     </button>
                     <button className="btn btn-sm" onClick={() => actions.resolveMistakes(list.map((x) => x.id))}>

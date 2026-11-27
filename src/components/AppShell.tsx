@@ -1,5 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { BookOpen, ChartNoAxesColumn, GraduationCap, House, Library, Menu, NotebookTabs, Settings, Users } from 'lucide-react'
+import { BookOpen, ChartNoAxesColumn, Cloud, CloudOff, GraduationCap, House, Library, LogOut, Menu, NotebookTabs, RefreshCw, Settings, Timer, Users } from 'lucide-react'
+import { useAccount } from '../services/server/account'
+import { signOut } from '../services/server/session'
+import { useSync } from '../services/server/sync'
+import { useTracker } from '../services/server/tracker'
 import { Link } from '../router'
 import { actions, useStore } from '../store/store'
 import { Dialog } from './Dialog'
@@ -27,9 +31,51 @@ function Brand() {
   )
 }
 
+const TRACK_TEXT = { active: 'يُحتسب وقت الدراسة', idle: 'متوقف: لا تفاعل', hidden: 'متوقف: الصفحة مخفية', offline: 'متوقف: لا اتصال' } as const
+
+/** شارة ظاهرة دائماً على الهاتف: هل يُحتسب وقت الدراسة الآن */
+function TrackChip() {
+  const track = useTracker()
+  const student = useAccount().session?.user.role === 'student'
+  if (!student || track === 'off') return null
+  return (
+    <span className="track-chip" data-track={track} role="status" title={`${TRACK_TEXT[track]}. يُسجَّل وقت دراستك الفعلي فقط.`}>
+      <Timer aria-hidden="true" /> {track === 'active' ? 'يُحتسب' : 'متوقف'}
+      <span className="sr-only">{TRACK_TEXT[track]}</span>
+    </span>
+  )
+}
+
+/** الطالب الداخل بحسابه: اسمه، وحالة الحفظ على الخادم، وهل يُحتسب وقت الدراسة الآن */
+function AccountBox() {
+  const session = useAccount().session
+  const sync = useSync()
+  const track = useTracker()
+  if (!session || session.user.role !== 'student') return null
+  return (
+    <div className="account-box">
+      <strong>{session.user.name}</strong>
+      <span className="account-state" title="حالة حفظ بياناتك على الخادم">
+        {sync === 'offline' ? <CloudOff aria-hidden="true" /> : sync === 'saving' ? <RefreshCw aria-hidden="true" /> : <Cloud aria-hidden="true" />}
+        {sync === 'offline' ? 'دون اتصال: محفوظ على الجهاز' : sync === 'saving' ? 'يحفظ…' : sync === 'error' ? 'تعذّر الحفظ، سيُعاد' : 'محفوظ'}
+      </span>
+      {track !== 'off' && (
+        <span className="account-state" data-track={track} title="يُحتسب وقت الدراسة الفعلي فقط">
+          <Timer aria-hidden="true" />
+          {TRACK_TEXT[track]}
+        </span>
+      )}
+      <button className="btn btn-sm" onClick={() => void signOut()}>
+        <LogOut aria-hidden="true" /> خروج
+      </button>
+    </div>
+  )
+}
+
 function NavContent({ path }: { path: string }) {
   const profiles = useStore((s) => s.profiles)
   const activeId = useStore((s) => s.activeId)
+  const account = !!useAccount().session
   return (
     <>
       <nav className="nav" aria-label="القائمة الرئيسية">
@@ -43,7 +89,8 @@ function NavContent({ path }: { path: string }) {
           )
         })}
       </nav>
-      <label className="profile-switch" title="تبديل الطالب">
+      <AccountBox />
+      {!account && <label className="profile-switch" title="تبديل الطالب">
         <Users aria-hidden="true" />
         <select value={activeId} onChange={(e) => actions.switchProfile(e.target.value)} aria-label="الطالب الحالي">
           {profiles.map((p) => (
@@ -52,7 +99,7 @@ function NavContent({ path }: { path: string }) {
             </option>
           ))}
         </select>
-      </label>
+      </label>}
     </>
   )
 }
@@ -71,6 +118,7 @@ export function AppShell({ path, compact, children }: { path: string; compact: b
           <Menu />
         </button>
         <Brand />
+        <TrackChip />
       </header>
       {open && (
         <Dialog variant="start" title="رفيق" onClose={() => setOpen(false)}>
