@@ -216,6 +216,9 @@ export interface Settings {
   textSize: 'normal' | 'large'
   digits: 'arab' | 'latn'
   level: Level
+  /** موعد الامتحان الذي حدده الطالب (إن لم يحدده المسؤول)، والوقت اليومي */
+  examDate?: string
+  dailyMin?: number
 }
 
 /** كل ما يخص طالباً واحداً. يُخزَّن منفصلاً عن الطالب الآخر. */

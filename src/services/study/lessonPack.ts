@@ -205,7 +205,7 @@ export function textWithCites(p: LessonPack, text: string): { text: string; cita
 }
 const ref = (n?: number) => (n ? ` [${n}]` : '')
 
-export type PackTool = 'explain' | 'full' | 'short' | 'final' | 'guide' | 'terms' | 'points' | 'mistakes' | 'qa' | 'mindmap' | 'cards' | 'quiz-easy' | 'quiz-medium' | 'quiz-hard' | 'worksheet'
+export type PackTool = 'match' | 'explain' | 'full' | 'short' | 'final' | 'guide' | 'terms' | 'points' | 'mistakes' | 'qa' | 'mindmap' | 'cards' | 'quiz-easy' | 'quiz-medium' | 'quiz-hard' | 'worksheet'
 export const PACK_TOOLS: { id: PackTool; label: string; group: 'read' | 'practice' }[] = [
   { id: 'explain', label: 'شرح الدرس كاملاً', group: 'read' },
   { id: 'full', label: 'ملخص شامل', group: 'read' },
@@ -218,6 +218,7 @@ export const PACK_TOOLS: { id: PackTool; label: string; group: 'read' | 'practic
   { id: 'mindmap', label: 'خريطة ذهنية', group: 'read' },
   { id: 'qa', label: 'سؤال وجواب', group: 'practice' },
   { id: 'cards', label: 'بطاقات المراجعة', group: 'practice' },
+  { id: 'match', label: 'مطابقة المصطلحات', group: 'practice' },
   { id: 'quiz-easy', label: 'اختبار سهل', group: 'practice' },
   { id: 'quiz-medium', label: 'اختبار متوسط', group: 'practice' },
   { id: 'quiz-hard', label: 'اختبار صعب', group: 'practice' },
@@ -236,6 +237,7 @@ export function hasTool(p: LessonPack, t: PackTool) {
     case 'qa': return p.qa.length > 0
     case 'mindmap': return !!p.mindmap?.children?.length
     case 'cards': return p.cards.length > 0
+    case 'match': return p.cards.length >= 4
     case 'worksheet': return p.worksheet.length > 0
     default: return p.quiz.some((q) => q.level === t.slice(5))
   }
@@ -261,6 +263,7 @@ export function toolData(p: LessonPack, t: PackTool): OutputData {
       const walk = (x: PackNode): MindNode => ({ label: x.label, ...(citeOf(p, x.n) ? { cite: citeOf(p, x.n) } : {}), ...(x.children?.length ? { children: x.children.map(walk) } : {}) })
       return { kind: 'mindmap', root: { ...walk(p.mindmap ?? { label: p.title }), label: p.title } }
     }
+    case 'match':
     case 'cards': return { kind: 'cards', known: [], cards: p.cards.map((c, i): Flashcard => ({ id: String(i + 1), front: c.front, back: c.back, type: c.type, cite: citeOf(p, c.n), ...(c.flag ? { flag: c.flag } : {}) })) }
     case 'worksheet': return {
       kind: 'quiz',

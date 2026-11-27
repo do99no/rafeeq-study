@@ -8,6 +8,7 @@ import { Link } from '../router'
 import { isSearchable, useDocs } from '../services/books/process'
 import { useData, useStore } from '../store/store'
 import { PlanCard } from '../components/PlanCard'
+import { StudyPlan } from '../components/StudyPlan'
 
 export function Home() {
   const data = useData()
@@ -37,6 +38,7 @@ export function Home() {
       </header>
 
       <PlanCard />
+      <StudyPlan />
       <section aria-labelledby="subj-h">
         <div className="section-head">
           <h2 id="subj-h">موادي</h2>

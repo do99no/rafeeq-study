@@ -1,4 +1,4 @@
-import { BookOpenCheck, CircleHelp, ClipboardList, FileText, Layers, ListChecks, Moon, Network, Sparkles, Target, TriangleAlert, Zap, type LucideIcon } from 'lucide-react'
+import { Shuffle, BookOpenCheck, CircleHelp, ClipboardList, FileText, Layers, ListChecks, Moon, Network, Sparkles, Target, TriangleAlert, Zap, type LucideIcon } from 'lucide-react'
 import { num } from '../../lib/format'
 import { hasTool, PACK_TOOLS, packOf, toolData, usePacks, type LessonPack, type PackTool } from '../../services/study/lessonPack'
 import { getState } from '../../store/store'
@@ -8,7 +8,7 @@ import type { ToolKind } from './ToolDialog'
 
 const ICONS: Record<PackTool, LucideIcon> = {
   explain: BookOpenCheck, full: FileText, short: Zap, final: Moon, guide: ClipboardList, terms: Target, points: Sparkles, mistakes: TriangleAlert,
-  mindmap: Network, qa: CircleHelp, cards: Layers, 'quiz-easy': ListChecks, 'quiz-medium': ListChecks, 'quiz-hard': ListChecks, worksheet: ClipboardList,
+  mindmap: Network, match: Shuffle, qa: CircleHelp, cards: Layers, 'quiz-easy': ListChecks, 'quiz-medium': ListChecks, 'quiz-hard': ListChecks, worksheet: ClipboardList,
 }
 
 export const packLabel = (p: LessonPack) => (p.status === 'reviewed' ? 'محتوى جاهز راجعه المسؤول' : 'محتوى جاهز أعدّه رفيق من صفحات الكتاب، ولم يراجعه معلم')
@@ -22,7 +22,7 @@ export function packOutput(notebook: Notebook, p: LessonPack, t: PackTool): { ou
   const saved = getState().data.outputs.find((o) => o.id === id)
   const label = PACK_TOOLS.find((x) => x.id === t)!.label
   const output = saved ?? { id, notebookId: notebook.id, title: `${label}: ${p.title}`, createdAt: Date.now(), data: toolData(p, t) }
-  return { output, keep: !saved && (output.data.kind === 'quiz' || output.data.kind === 'cards') }
+  return { output, keep: !saved && t !== 'match' && (output.data.kind === 'quiz' || output.data.kind === 'cards') }
 }
 
 interface Props {

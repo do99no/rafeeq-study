@@ -9,6 +9,7 @@ import { Dialog } from '../Dialog'
 import { RichText } from '../RichText'
 import { CardsView } from './CardsView'
 import { MindMapView } from './MindMapView'
+import { MatchView } from './MatchView'
 import { QuizView } from './QuizView'
 
 function NoteView({ output, text, onDone }: { output: StudyOutput; text: string; onDone: () => void }) {
@@ -73,7 +74,8 @@ export default function OutputDialog({ output, onClose, prepared }: { output: St
         ))}
       {data.kind === 'note' && <NoteView output={output} text={data.text} onDone={onClose} />}
       {data.kind === 'quiz' && <QuizView output={output} questions={data.questions} onClose={onClose} />}
-      {data.kind === 'cards' && <CardsView outputId={output.id} cards={data.cards} known={data.known} />}
+      {data.kind === 'cards' && output.id.endsWith('-match') && <MatchView cards={data.cards} />}
+      {data.kind === 'cards' && !output.id.endsWith('-match') && <CardsView outputId={output.id} cards={data.cards} known={data.known} />}
       {data.kind === 'mindmap' && <MindMapView root={data.root} />}
     </Dialog>
   )

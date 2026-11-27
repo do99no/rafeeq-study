@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Archive, BookOpenCheck, ClipboardList, Database, LoaderCircle, Play, Shuffle, Target, TriangleAlert } from 'lucide-react'
 import { ExamRunner } from '../components/exams/ExamRunner'
 import { normalize } from '../lib/arabic'
+import { toolData, usePacks } from '../services/study/lessonPack'
 import { num } from '../lib/format'
 import { notebookFor } from '../lib/study'
 import { Link } from '../router'
@@ -176,8 +177,55 @@ function WorksheetsTab({ run }: { run: (o: QuizOutput) => void }) {
     void make(bid, lessons.map((s) => ({ bookId: bid, from: s.page, to: s.endPage })), `ورقة عمل من نقاط ضعفي: ${data.books.find((b) => b.id === bid)?.title ?? ''}`, lessons.map((s) => s.title))
   }
   const sheets = data.outputs.filter((o): o is QuizOutput => isQuiz(o) && o.data.meta?.mode === 'worksheet')
+  const ready = useReadyQuestions().filter((r) => r.kind === 'worksheet')
+  const readyBooks = [...new Map(ready.map((r) => [r.bookId, r.q.cite.bookTitle])).entries()]
+  const [rb, setRb] = useState('')
+  const rbook = rb || readyBooks[0]?.[0] || ''
+  const groups = [...ready.filter((r) => r.bookId === rbook).reduce((m, r) => m.set(r.unit || r.lesson, [...(m.get(r.unit || r.lesson) ?? []), r]), new Map<string, typeof ready>())]
+  const openSheet = (title: string, list: typeof ready) =>
+    run(save(title, list[0].bookId, list.map((r) => r.q), { mode: 'worksheet', subject: list[0].subject, minutes: list.length * 3, estimated: true, marks: list.length, lessons: [...new Set(list.map((r) => r.lesson))] }))
   return (
     <>
+      {ready.length > 0 && (
+        <section className="panel form" aria-labelledby="ready-ws">
+          <h3 className="mini-h" id="ready-ws">أوراق عمل جاهزة</h3>
+          <p className="muted">أوراق أعدّها رفيق مسبقاً من صفحات الكتاب، بنموذج إجابة. تُطبع من داخل الورقة.</p>
+          <label className="field">
+            <span>الكتاب</span>
+            <select className="input" value={rbook} onChange={(e) => setRb(e.target.value)}>
+              {readyBooks.map(([id, t]) => (
+                <option key={id} value={id}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ul className="ready-sheets">
+            {groups.map(([unitName, list]) => {
+              const byLesson = [...new Map(list.map((r) => [r.lesson, list.filter((x) => x.lesson === r.lesson)])).entries()]
+              return (
+                <li key={unitName}>
+                  <div className="sheet-unit">
+                    <strong>{unitName}</strong>
+                    {byLesson.length > 1 && (
+                      <button className="btn btn-sm" onClick={() => openSheet(`ورقة مراجعة الوحدة: ${unitName}`, list)}>
+                        ورقة الوحدة ({num(list.length)})
+                      </button>
+                    )}
+                  </div>
+                  <div className="chips">
+                    {byLesson.map(([lessonName, ls]) => (
+                      <button key={lessonName} className="chip" onClick={() => openSheet(`ورقة عمل: ${lessonName}`, ls)}>
+                        {lessonName} <small className="muted">{num(ls.length)}</small>
+                      </button>
+                    ))}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
       <section className="panel form">
         <h3 className="mini-h">ورقة عمل جديدة</h3>
         {!books.length ? (
@@ -280,47 +328,131 @@ function WorksheetsTab({ run }: { run: (o: QuizOutput) => void }) {
 }
 
 /** بنك الأسئلة: كل أسئلة الطالب من الاختبارات والأوراق والمصادر، دون تكرار */
+/** أسئلة الدروس الجاهزة بمادتها وكتابها ووحدتها ودرسها ومستواها */
+function useReadyQuestions() {
+  const { cache } = usePacks()
+  const docs = useDocs()
+  return useMemo(() => {
+    const out: { q: QuizQuestion; subject: string; bookId: string; unit: string; lesson: string; level: string; kind: 'quiz' | 'worksheet' }[] = []
+    for (const [bookId, e] of Object.entries(cache))
+      for (const p of Object.values(e.lessons)) {
+        if (p.status === 'hidden') continue
+        const sections = docs[bookId]?.sections ?? []
+        const unit = [...sections].reverse().find((x) => x.level === 1 && x.page <= p.from)?.title ?? ''
+        for (const lv of ['easy', 'medium', 'hard'] as const) {
+          const d = toolData(p, `quiz-${lv}`)
+          if (d.kind === 'quiz') for (const q of d.questions) out.push({ q, subject: p.subject, bookId, unit, lesson: p.title, level: lv, kind: 'quiz' })
+        }
+        const w = toolData(p, 'worksheet')
+        if (w.kind === 'quiz') for (const q of w.questions) out.push({ q, subject: p.subject, bookId, unit, lesson: p.title, level: 'medium', kind: 'worksheet' })
+      }
+    return out
+  }, [cache, docs])
+}
+const LEVELS_AR: Record<string, string> = { easy: 'سهل', medium: 'متوسط', hard: 'صعب' }
+
 function BankTab({ run }: { run: (o: QuizOutput) => void }) {
   const data = useData()
+  const ready = useReadyQuestions()
+  const [subject, setSubject] = useState('')
+  const [unit, setUnit] = useState('')
+  const [lesson, setLesson] = useState('')
+  const [level, setLevel] = useState('')
   const [book, setBook] = useState('')
   const [type, setType] = useState('')
   const [origin, setOrigin] = useState('')
   const [count, setCount] = useState(10)
   const [minutes, setMinutes] = useState(20)
+  type Entry = { q: QuizQuestion; subject?: string; unit?: string; lesson?: string; level?: string }
   const bank = useMemo(() => {
     const seen = new Set<string>()
-    const out: QuizQuestion[] = []
-    for (const o of data.outputs)
-      if (isQuiz(o))
-        for (const q of o.data.questions) {
-          const k = normalize(q.q)
-          if (q.pageTask || seen.has(k)) continue
-          seen.add(k)
-          out.push(q)
-        }
+    const out: Entry[] = []
+    const add = (e: Entry) => {
+      const k = normalize(e.q.q)
+      if (e.q.pageTask || seen.has(k)) return
+      seen.add(k)
+      out.push(e)
+    }
+    for (const r of ready) add(r)
+    for (const o of data.outputs) if (isQuiz(o)) for (const q of o.data.questions) add({ q, subject: data.books.find((b) => b.id === q.cite.bookId)?.subject })
     return out
-  }, [data.outputs])
-  const list = bank.filter((q) => (!book || q.cite.bookId === book) && (!type || q.type === type) && (!origin || (origin === 'rafeeq' ? !q.origin : !!q.origin)))
-  const books = [...new Map(bank.map((q) => [q.cite.bookId, q.cite.bookTitle])).entries()]
+  }, [data.outputs, data.books, ready])
+  const list = bank
+    .filter((e) => (!subject || e.subject === subject) && (!book || e.q.cite.bookId === book) && (!unit || e.unit === unit) && (!lesson || e.lesson === lesson) && (!level || e.level === level))
+    .filter((e) => (!type || e.q.type === type) && (!origin || (origin === 'rafeeq' ? !e.q.origin || e.q.origin.includes('رفيق') : !!e.q.origin && !e.q.origin.includes('رفيق'))))
+    .map((e) => e.q)
+  const subjects = [...new Set(bank.map((e) => e.subject).filter((x): x is string => !!x))]
+  const books = [...new Map(bank.filter((e) => !subject || e.subject === subject).map((e) => [e.q.cite.bookId, e.q.cite.bookTitle])).entries()]
+  const units = [...new Set(bank.filter((e) => e.q.cite.bookId === book && e.unit).map((e) => e.unit!))]
+  const lessons = [...new Set(bank.filter((e) => e.q.cite.bookId === book && (!unit || e.unit === unit) && e.lesson).map((e) => e.lesson!))]
   const mixed = () => {
     // دون تكرار داخل الاختبار، وبترتيب عشوائي
     const pick = [...list].map((q) => ({ q, r: Math.random() })).sort((a, b) => a.r - b.r).slice(0, count).map((x) => x.q)
     if (!pick.length) return
-    run(save(`اختبار مختلط من بنك الأسئلة (${num(pick.length)})`, pick[0].cite.bookId, pick, { mode: 'mixed', minutes, estimated: true, marks: pick.length }))
+    const scope = lesson || unit || books.find(([id]) => id === book)?.[1] || subject
+    run(save(`اختبار ${scope ? `«${scope}»` : 'مختلط'}${level ? ` (${LEVELS_AR[level]})` : ''}: ${num(pick.length)} سؤالاً`, pick[0].cite.bookId, pick, { mode: 'mixed', minutes, estimated: true, marks: pick.length, ...(level ? { level: level as 'easy' | 'medium' | 'hard' } : {}) }))
   }
   return (
     <section className="panel form">
       <p className="muted">
-        في بنكك {num(bank.length)} سؤالاً مختلفاً من اختباراتك وأوراق عملك ومصادر الامتحانات. كل سؤال يحتفظ بمصدره: «من إعداد رفيق» أو المذكرة.
+        في البنك {num(bank.length)} سؤالاً مختلفاً: أسئلة الدروس الجاهزة، واختباراتك وأوراق عملك، ومصادر الامتحانات. كل سؤال بمصدره وصفحته، والأسئلة من إعداد رفيق ليست أسئلة امتحان رسمية.
       </p>
       <div className="grid-2">
         <label className="field">
+          <span>المادة</span>
+          <select className="input" value={subject} onChange={(e) => (setSubject(e.target.value), setBook(''), setUnit(''), setLesson(''))}>
+            <option value="">الكل</option>
+            {subjects.map((x) => (
+              <option key={x} value={x}>
+                {x}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
           <span>الكتاب</span>
-          <select className="input" value={book} onChange={(e) => setBook(e.target.value)}>
+          <select className="input" value={book} onChange={(e) => (setBook(e.target.value), setUnit(''), setLesson(''))}>
             <option value="">الكل</option>
             {books.map(([id, t]) => (
               <option key={id} value={id}>
                 {t}
+              </option>
+            ))}
+          </select>
+        </label>
+        {book && units.length > 0 && (
+          <label className="field">
+            <span>الوحدة</span>
+            <select className="input" value={unit} onChange={(e) => (setUnit(e.target.value), setLesson(''))}>
+              <option value="">كل الوحدات</option>
+              {units.map((x) => (
+                <option key={x} value={x}>
+                  {x}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {book && lessons.length > 0 && (
+          <label className="field">
+            <span>الدرس</span>
+            <select className="input" value={lesson} onChange={(e) => setLesson(e.target.value)}>
+              <option value="">كل الدروس</option>
+              {lessons.map((x) => (
+                <option key={x} value={x}>
+                  {x}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="field">
+          <span>المستوى</span>
+          <select className="input" value={level} onChange={(e) => setLevel(e.target.value)}>
+            <option value="">الكل</option>
+            {Object.entries(LEVELS_AR).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
               </option>
             ))}
           </select>
