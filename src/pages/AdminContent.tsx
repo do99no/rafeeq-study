@@ -10,7 +10,7 @@ import type { Section } from '../services/books/types'
 import { api, serverLibraryCode } from '../services/server/account'
 import type { LessonPack, PackInfo } from '../services/study/lessonPack'
 import { lessonsOf, prepareLesson, setPackStatus, uploadPack } from '../services/study/prepare'
-import { REVIEW_V } from '../services/study/verify'
+import { reviewVersion } from '../services/study/verify'
 import { toast } from '../store/toast'
 
 const PART_LABEL: Record<string, string> = { steps: 'الشرح', summary: 'الملخصات', guide: 'دليل الدراسة', terms: 'المصطلحات', laws: 'القوانين', points: 'النقاط المهمة', mistakes: 'الأخطاء الشائعة', mindmap: 'الخريطة الذهنية', qa: 'سؤال وجواب', cards: 'البطاقات', quiz: 'الاختبارات', worksheet: 'ورقة العمل' }
@@ -52,7 +52,8 @@ export function AdminContent() {
   }, [])
 
   const info = (b: string, s: string) => ready.find((r) => r.bookId === b && r.sectionId === s)
-  const complete = (i?: PackInfo) => !!i && i.parts.includes('checked') && i.parts.includes(`rv${REVIEW_V}`)
+  const subjectOf = (b: string) => books?.find((x) => x.item.id === b)?.item.subject ?? ''
+  const complete = (i?: PackInfo) => !!i && i.parts.includes('checked') && i.parts.includes(`rv${reviewVersion(subjectOf(i.bookId))}`)
   const say = (t: string) => setLog((l) => [`${new Date().toLocaleTimeString('ar')}: ${t}`, ...l].slice(0, 60))
 
   /** يجهّز دروس الكتب المعطاة واحداً تلو الآخر حتى يكتمل أو تنفد الحصة أو يُوقف */

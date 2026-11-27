@@ -10,6 +10,8 @@ import type { LessonPack } from './lessonPack'
  * التطابق ليس برهاناً على الصحة؛ هو فحص يكشف التناقض.
  */
 export const REVIEW_V = 2
+/** نسخة الفحص المطلوبة لكل مادة: العلوم (٣) أضيف لها الحل المستقل للمسائل العددية */
+export const reviewVersion = (subject: string) => (['الفيزياء', 'الكيمياء', 'الأحياء', 'العلوم الهندسية'].includes(subject) ? 3 : REVIEW_V)
 const DIGITS = (s: string) => s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[٫]/g, '.').replace(/[−–]/g, '-')
 /** توحيد للمقارنة الحرفية: دون مسافات وعلامات تنسيق */
 const flat = (s: string) => normalize(DIGITS(s)).replace(/[\s`'"«»()[\]{}.,،:؛;]/g, '').replace(/\*\*/g, '')

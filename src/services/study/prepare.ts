@@ -9,7 +9,7 @@ import { cleanCites, passagesText } from './assistant'
 import { reviewPack, type LessonPack, type PackReview, type PackCite, type PackNode, type PackQuestion, type PackStep } from './lessonPack'
 import { pageImages } from './pages'
 import { errataNote, errataOf } from '../../data/errata'
-import { compare, flagItem, itemsToSolve, JUDGE_ASK, REVIEW_V, SOLVE_ASK } from './verify'
+import { compare, flagItem, itemsToSolve, JUDGE_ASK, reviewVersion, SOLVE_ASK } from './verify'
 import { STRICT, subjectGuide, SYMBOLIC } from './prompts'
 
 /**
@@ -313,8 +313,9 @@ export async function prepareLesson(l: Lesson, doc: DocMeta, signal: AbortSignal
   }
   // الرياضيات: حل مستقل لكل سؤال ثم مقارنة برمجية؛ والمسائل في المواد العلمية الأخرى تُعلَّم لأنها لم تُتحقق آلياً
   let verified: 'independent' | 'none' = 'none'
-  if (l.subject === 'الرياضيات') {
-    const items = itemsToSolve(pack)
+  if (symbolic) {
+    // الرياضيات: كل الأسئلة؛ العلوم: المسائل والإجابات العددية فقط
+    const items = itemsToSolve(pack).filter((x) => l.subject === 'الرياضيات' || x.kind === 'problem' || /[0-9٠-٩]/.test(x.stored))
     if (items.length) {
       onProgress?.({ phase: 'يتحقق من الحلول بحل مستقل' })
       const r = await ask(system, passages + SOLVE_ASK(items), shots, note, signal)
@@ -337,9 +338,10 @@ export async function prepareLesson(l: Lesson, doc: DocMeta, signal: AbortSignal
         }
       }
     }
-  } else if (symbolic)
-    for (const x of [...pack.quiz, ...pack.worksheet]) if (x.type === 'problem') x.flag = 'مسألة لم يُتحقق من حلها آلياً؛ راجع الناتج في صفحة الكتاب.'
-  review = { ...reviewPack(pack, verified), v: REVIEW_V }
+    // مسألة لم يمكن الحكم عليها آلياً تبقى موسومة
+    if (l.subject !== 'الرياضيات') for (const x of [...pack.quiz, ...pack.worksheet]) if (x.type === 'problem' && !x.flag && verified !== 'independent') x.flag = 'مسألة لم يُتحقق من حلها آلياً؛ راجع الناتج في صفحة الكتاب.'
+  }
+  review = { ...reviewPack(pack, verified), v: reviewVersion(l.subject) }
   pack.review = review
   return { pack, dropped, reused }
 }
