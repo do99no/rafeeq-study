@@ -1,5 +1,6 @@
 # للنشر بموافقة صاحب المشروع وبحسابه. الأسرار عبر: wrangler secret put اسم_السر
-# الأسرار: PASSWORD_PEPPER و SETUP_CODE (للحسابات)، ACCESS_CODE و GEMINI_API_KEY (للذكاء الاصطناعي)، LIBRARY_CODE (اختياري)
+# الأسرار: PASSWORD_PEPPER و SETUP_CODE (للحسابات)، KEYS_SECRET (تشفير مفاتيح الذكاء الاصطناعي في D1)، ACCESS_CODE و GEMINI_API_KEY و GEMINI_API_KEY_2… (للذكاء الاصطناعي)، LIBRARY_CODE (اختياري)
+# كل سر بأمر منفصل، مثل: npx wrangler secret put KEYS_SECRET  (تُلصق القيمة عند الطلب ولا تُكتب في سطر الأوامر)
 name = "rafeeq-ai"
 main = "index.mjs"
 compatibility_date = "2026-11-01"

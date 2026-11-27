@@ -103,11 +103,16 @@ async function call(path: string, body: unknown, signal: AbortSignal): Promise<R
   return res
 }
 
+/** المجموعة المشتركة: الخادم يختار المزود، ويخبر باسمه وهل قرأ الصور */
+const lastMeta = new WeakMap<Provider, { name?: string; images?: boolean }>()
 function viaWorker(info: ProviderInfo): Provider {
-  return {
+  const p: Provider = {
     info,
     async *chat(messages, { maxTokens, signal }) {
-      yield* readSse(await call('/chat', { provider: info.id, messages, maxTokens }, signal))
+      const res = await call('/chat', { provider: info.id, messages, maxTokens }, signal)
+      const name = res.headers.get('x-rafeeq-provider')
+      lastMeta.set(p, { name: name ? decodeURIComponent(name) : undefined, images: res.headers.has('x-rafeeq-images') ? res.headers.get('x-rafeeq-images') === '1' : undefined })
+      yield* readSse(res)
     },
     async embed(texts, signal) {
       return (await call('/embed', { provider: info.id, texts }, signal)).json()
@@ -116,6 +121,7 @@ function viaWorker(info: ProviderInfo): Provider {
       return (await (await call('/rerank', { provider: info.id, query, docs }, signal)).json()).order
     },
   }
+  return p
 }
 
 const OLLAMA = 'http://localhost:11434/v1'
@@ -221,7 +227,10 @@ export async function* chat(messages: ChatMsg[], opts: { maxTokens?: number; sig
     try {
       const vision = !!p.info.models.vision
       for await (const text of p.chat!(forProvider(messages, vision), opts)) {
-        if (!started) yield { type: 'provider', name: p.info.name, images: vision && hasImages(messages) }
+        if (!started) {
+          const meta = lastMeta.get(p)
+          yield { type: 'provider', name: meta?.name ?? p.info.name, images: (meta?.images ?? vision) && hasImages(messages) }
+        }
         started = true
         yield { type: 'text', text }
       }

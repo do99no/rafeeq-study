@@ -16,6 +16,12 @@ export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, at INTEGER NOT NULL, type TEXT NOT NULL, subject TEXT, book TEXT, lesson TEXT, detail TEXT, session_id TEXT, queued INTEGER NOT NULL DEFAULT 0)`,
   `CREATE INDEX IF NOT EXISTS events_user ON events(user_id, at)`,
   `CREATE TABLE IF NOT EXISTS plans (user_id TEXT PRIMARY KEY, json TEXT NOT NULL, updated INTEGER NOT NULL)`,
+  // المجموعة المشتركة لمفاتيح الذكاء الاصطناعي (worker/keys.mjs)
+  `CREATE TABLE IF NOT EXISTS ai_keys (id TEXT PRIMARY KEY, provider TEXT NOT NULL, label TEXT NOT NULL, owner TEXT NOT NULL DEFAULT 'unassigned', project TEXT NOT NULL DEFAULT '', source TEXT NOT NULL, env_name TEXT, enc TEXT, last4 TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'unknown', last_ok INTEGER, last_used INTEGER, last_error TEXT, last_error_at INTEGER, created INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS ai_quota (provider TEXT NOT NULL, project TEXT NOT NULL, cool_until INTEGER NOT NULL, reason TEXT NOT NULL, PRIMARY KEY (provider, project))`,
+  `CREATE TABLE IF NOT EXISTS ai_usage (day TEXT NOT NULL, key_id TEXT NOT NULL, provider TEXT NOT NULL, project TEXT NOT NULL, model TEXT NOT NULL, user_id TEXT NOT NULL, kind TEXT NOT NULL, requests INTEGER NOT NULL DEFAULT 0, ok INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0, tokens_in INTEGER NOT NULL DEFAULT 0, tokens_out INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, key_id, model, user_id, kind))`,
+  `CREATE TABLE IF NOT EXISTS ai_errors (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, key_id TEXT, provider TEXT NOT NULL, project TEXT, model TEXT, code TEXT NOT NULL, status INTEGER, user_id TEXT)`,
+  `CREATE TABLE IF NOT EXISTS ai_providers (id TEXT PRIMARY KEY, approved INTEGER NOT NULL DEFAULT 0, approved_at INTEGER, confirm TEXT)`,
 ]
 
 const ready = new WeakSet()

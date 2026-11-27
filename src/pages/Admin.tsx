@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowRight, BookOpen, CalendarDays, ChartNoAxesColumn, ClipboardList, History, KeyRound, LoaderCircle, LogOut, RefreshCw, ShieldCheck, TriangleAlert, UserRound } from 'lucide-react'
+import { ArrowRight, BookOpen, CalendarDays, ChartNoAxesColumn, ClipboardList, History, KeyRound, LoaderCircle, LogOut, RefreshCw, ShieldCheck, TriangleAlert, UserRound, Zap } from 'lucide-react'
 import { DailyBars, dur, SplitBars, Trend } from '../components/admin/Charts'
 import { num } from '../lib/format'
 import { go, Link } from '../router'
 import { api, changePassword, logout, ServerError } from '../services/server/account'
 import { toast } from '../store/toast'
+import { AdminAI } from './AdminAI'
 
 interface Summary {
   id: string
@@ -728,11 +729,14 @@ export default function AdminApp({ path }: { path: string }) {
           </span>
         </Link>
         <span className="grow" />
+        <Link to="/admin/ai" className="btn btn-sm">
+          <Zap aria-hidden="true" /> الذكاء الاصطناعي
+        </Link>
         <Link to="/admin/me" className="btn btn-sm">
           <KeyRound aria-hidden="true" /> حسابي
         </Link>
       </header>
-      <main className="main">{sid ? <StudentPage key={sid} id={sid} /> : path === '/admin/me' ? <OwnAccount /> : <Overview />}</main>
+      <main className="main">{sid ? <StudentPage key={sid} id={sid} /> : path === '/admin/me' ? <OwnAccount /> : path === '/admin/ai' ? <AdminAI /> : <Overview />}</main>
     </div>
   )
 }
