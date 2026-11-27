@@ -235,6 +235,8 @@ export function unitsOf(sections: Section[], lessons: Section[], bookTitle: stri
 }
 
 const MATH = 'الرياضيات'
+const SCIENCE = new Set(['الفيزياء', 'الكيمياء', 'العلوم الهندسية'])
+const INTRO = /مقدمة|تمهيد|نبذة تاريخية|تاريخ/
 /** هل في الحزمة ما يكفي لاعتبار الدرس جاهزاً (الشرط نفسه في لوحة الجاهزية) */
 export function packComplete(subject: string, i?: PackInfo) {
   if (!i || i.status === 'hidden' || !i.parts.includes('checked')) return false
@@ -300,38 +302,46 @@ export function buildBank(subject: string, books: BankBook[], info: (b: string, 
     }
   }
   const pattern: BankItem['level'][] = ['easy', 'medium', 'hard', 'medium']
-  const chosen: BankItem[] = []
-  const candidates: BankItem[] = []
-  const usedLessons = new Map<string, number>()
-  const pick = (pool: BankItem[], level: BankItem['level'], onlyApproved: boolean) => {
-    const fresh = pool.filter((x) => !chosen.some((c) => c.id === x.id || similar(c.q, x.q) > 0.6) && (!onlyApproved || approved.has(x.id)))
-    // التطبيق في الرياضيات: «احسب/أوجد» قبل الصح والخطأ
-    const rank = (x: BankItem) => (x.level === level ? 0 : 2) + (x.type === 'tf' ? 1 : 0)
-    return fresh.sort((a, b) => rank(a) - rank(b))
-  }
-  // جولات على الوحدات حتى يكتمل العدد: في كل جولة درس جديد من كل وحدة
-  let k = 0
-  for (let round = 0; chosen.length < plan.n && round < 12; round++) {
+  const problemy = subject === MATH || SCIENCE.has(subject)
+  // الدروس التمهيدية والتاريخية لا تقيس المستوى: تُستبعد
+  for (const slot of slots) slot.lessons = slot.lessons.filter((l) => !INTRO.test(l.s.title))
+  const live = slots.filter((s) => s.lessons.some((l) => l.pool.length))
+  const rank = (x: BankItem, level: BankItem['level']) => (x.level === level ? 0 : 3) + (problemy && !/[0-9٠-٩]/.test(x.q + x.answer) ? 2 : 0) + (x.type === 'tf' ? 1 : 0)
+  // المواضع: بالدور على الوحدات، وفي كل وحدة درس مختلف كل مرة موزع على امتداد الوحدة
+  type Plan = { level: BankItem['level']; options: BankItem[] }
+  const plans: Plan[] = []
+  const used = new Set<string>()
+  const taken: BankItem[] = []
+  for (let round = 0; plans.length < plan.n && round < 12; round++) {
     let added = false
-    for (const slot of slots) {
-      if (chosen.length >= plan.n) break
-      const level = pattern[k % pattern.length]
-      const order = [...slot.lessons].sort((a, b) => (usedLessons.get(`${a.book.id}:${a.s.id}`) ?? 0) - (usedLessons.get(`${b.book.id}:${b.s.id}`) ?? 0))
-      for (const l of order) {
-        if ((usedLessons.get(`${l.book.id}:${l.s.id}`) ?? 0) > round) continue
-        const all = pick(l.pool, level, false)
-        if (!all.length) continue
-        for (const c of all.slice(0, 3)) if (!candidates.some((x) => x.id === c.id)) candidates.push(c)
-        const ok = pick(l.pool, level, true)[0]
-        if (!ok) continue
-        chosen.push(ok)
-        usedLessons.set(`${l.book.id}:${l.s.id}`, (usedLessons.get(`${l.book.id}:${l.s.id}`) ?? 0) + 1)
-        k++
+    for (const [ui, slot] of live.entries()) {
+      if (plans.length >= plan.n) break
+      const level = pattern[plans.length % pattern.length]
+      const ls = slot.lessons.filter((l) => l.pool.length)
+      const n = ls.length
+      for (let k = 0; k < n; k++) {
+        const l = ls[(Math.floor(((round + 0.5) * n) / 3) + k + ui) % n]
+        const key = `${l.book.id}:${l.s.id}`
+        if (used.has(key) && round < 2) continue
+        const fresh = l.pool.filter((x) => !taken.some((c) => c.id === x.id || similar(c.q, x.q) > 0.6)).sort((a, b) => rank(a, level) - rank(b, level))
+        if (!fresh.length) continue
+        used.add(key)
+        const options = fresh.slice(0, 3)
+        taken.push(...options)
+        plans.push({ level, options })
         added = true
         break
       }
     }
-    if (!added && round > 0) break
+    if (!added) break
+  }
+  // المعتمد في المراجعة وحده يدخل؛ والمرشحون الذين لم يُراجَعوا بعد في المواضع التي لم يُعتمد لها سؤال
+  const chosen: BankItem[] = []
+  const candidates: BankItem[] = []
+  for (const p of plans) {
+    const ok = p.options.find((x) => approved.has(x.id))
+    if (ok) chosen.push(ok)
+    candidates.push(...p.options)
   }
   // ترتيب العرض: بترتيب المنهج (الكتاب ثم الدرس)، ليكون أول خطأ أقدم درس يحتاجه الطالب
   const pos = (x: BankItem) => {
@@ -339,13 +349,13 @@ export function buildBank(subject: string, books: BankBook[], info: (b: string, 
     return bi * 10000 + (books[bi]?.sections.findIndex((s) => s.id === x.sectionId) ?? 0)
   }
   chosen.sort((a, b) => pos(a) - pos(b))
-  const units = slots.length
+  const units = slots.filter((s) => s.lessons.length).length
   const covered = new Set(chosen.map((x) => `${x.bookId}:${x.unit}`)).size
   const blockers: string[] = []
   if (readyLessons < totalLessons * 0.9) blockers.push(`الدروس الجاهزة ${readyLessons} من ${totalLessons}: يلزم ٩٠٪ على الأقل كي يغطي الاختبار المنهج`)
   if (covered < Math.ceil(units * 0.8)) blockers.push(`الأسئلة تغطي ${covered} من ${units} وحدة: يلزم ٨٠٪ على الأقل`)
   if (chosen.length < Math.min(plan.n, 12)) blockers.push(`الأسئلة المعتمدة ${chosen.length}، والمطلوب ${plan.n}`)
-  const unreviewed = candidates.filter((c) => !approved.has(c.id) && !rev.rejected[c.id]).length
+  const unreviewed = plans.filter((p) => !p.options.some((x) => approved.has(x.id))).reduce((n, p) => n + p.options.filter((c) => !rev.rejected[c.id]).length, 0)
   return { subject, items: chosen, candidates, minutes: plan.minutes, coverage: { units, covered, lessons: new Set(chosen.map((x) => x.sectionId + x.bookId)).size, readyLessons, totalLessons }, blockers, unreviewed }
 }
 

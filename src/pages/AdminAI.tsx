@@ -96,7 +96,7 @@ function ProviderCard({ p, onDone }: { p: Provider; onDone: () => void }) {
       setOpen(false)
       onDone()
     } catch (e) {
-      toast(e instanceof ServerError && e.code === 'confirm_required' ? 'أكّد كل الشروط أولاً.' : e instanceof ServerError && e.code === 'not_verified' ? 'لا يُعتمد مزود لم تُتحقق مجانيته.' : 'تعذّر الحفظ.')
+      toast(e instanceof ServerError && e.code === 'confirm_required' ? 'أكّد كل الشروط أولاً.' : e instanceof ServerError && e.code === 'not_verified' ? 'لا يُعتمد مزود لم يُتحقَّق من مجانيته.' : 'تعذّر الحفظ.')
     }
   }
   const f = p.free
@@ -234,7 +234,7 @@ function AddKey({ providers, onDone }: { providers: Provider[]; onDone: () => vo
         <span>المفتاح (يُشفّر في الخادم ولا يُعرض مرة أخرى)</span>
         <input type="password" value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })} required autoComplete="new-password" dir="ltr" spellCheck={false} />
       </label>
-      <p className="muted small">مفاتيح المشروع الواحد حصة واحدة. اترك المشروع فارغاً إن لم تعرفه، فتُعامل كل مفاتيح المزود الفارغة حصة واحدة.</p>
+      <p className="muted small">مفاتيح المشروع الواحد حصة واحدة. اترك المشروع فارغاً إن لم تعرفه، فتُعامل كل مفاتيح المزود التي بلا مشروع حصةً واحدة.</p>
       <button className="btn btn-primary" disabled={busy}>
         {busy && <LoaderCircle className="spin" aria-hidden="true" />} حفظ مشفراً
       </button>

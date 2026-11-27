@@ -203,7 +203,7 @@ export default function PageViewer({ target }: { target: ViewerTarget }) {
                 </div>
               </details>
             ))}
-            <p className="hint">النص مقروء آلياً من الصفحة وقد تخطئ رموزه؛ الصورة أعلاه هي المرجع.</p>
+            <p className="hint">النص مقروء آلياً من الصفحة وقد تكون بعض رموزه غير دقيقة؛ الصورة أعلاه هي المرجع.</p>
           </section>
         )}
       </div>

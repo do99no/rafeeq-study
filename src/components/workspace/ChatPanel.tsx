@@ -44,7 +44,7 @@ const LESSON_ACTIONS: { label: string; text: string; task: Task; icon: typeof Ta
   { label: 'أخطاء شائعة', text: 'ما الأخطاء التي قد أقع فيها في الامتحان في هذا الدرس؟', task: 'mistakes', icon: X },
 ]
 const EXAMPLES = ['اشرح لي الفرق بين مفهومين في الدرس', 'أعطني أمثلة على هذه القاعدة', 'اشرح لي هذه المعادلة خطوة بخطوة']
-const VERDICT: Record<string, string> = { correct: 'إجابة صحيحة', partial: 'إجابة صحيحة جزئياً', wrong: 'إجابة غير صحيحة', skipped: 'تُخطي السؤال' }
+const VERDICT: Record<string, string> = { correct: 'إجابة صحيحة', partial: 'إجابة صحيحة جزئياً', wrong: 'إجابة غير صحيحة', skipped: 'تخطّى السؤال' }
 
 interface Props {
   notebook: Notebook

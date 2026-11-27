@@ -58,7 +58,7 @@ function AccountBox() {
       <strong>{session.user.name}</strong>
       <span className="account-state" title="حالة حفظ بياناتك على الخادم">
         {sync === 'offline' ? <CloudOff aria-hidden="true" /> : sync === 'saving' ? <RefreshCw aria-hidden="true" /> : <Cloud aria-hidden="true" />}
-        {sync === 'offline' ? 'دون اتصال: محفوظ على الجهاز' : sync === 'saving' ? 'يحفظ…' : sync === 'error' ? 'تعذّر الحفظ، سيُعاد' : 'محفوظ'}
+        {sync === 'offline' ? 'دون اتصال: محفوظ على الجهاز' : sync === 'saving' ? 'جارٍ الحفظ…' : sync === 'error' ? 'تعذّر الحفظ، سيُعاد' : 'محفوظ'}
       </span>
       {track !== 'off' && (
         <span className="account-state" data-track={track} title="يُحتسب وقت الدراسة الفعلي فقط">

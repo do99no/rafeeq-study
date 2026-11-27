@@ -322,7 +322,7 @@ function SummaryTab({ d }: { d: Detail }) {
             </li>
           ))}
         </ul>
-        <p className="muted small">«مكتمل»: أنهى التعليم خطوة بخطوة، أو شُرح الدرس ونجح في أسئلة الفهم (٦٠٪ فأكثر من سؤالين) أو في اختبار الدرس.</p>
+        <p className="muted small">«مكتمل»: أنهى التعليم خطوة بخطوة، أو شُرح الدرس ونجح في أسئلة الفهم (بنسبة ٦٠٪ فأكثر في سؤالين) أو في اختبار الدرس.</p>
       </section>
       <section className="panel">
         <h3 className="mini-h">نقاط الضعف والبطاقات</h3>
@@ -656,7 +656,7 @@ function AccountTab({ id, name }: { id: string; name: string }) {
     if (!confirm('استعادة هذه النسخة تستبدل بيانات الطالب الحالية (تُحفظ نسخة منها أولاً). متابعة؟')) return
     try {
       await api('/admin/restore', { body: { userId: id, backupId: b } })
-      toast('استُعيدت النسخة. ستظهر على جهاز الطالب عند فتحه رفيق.')
+      toast('استُعيدت النسخة. ستظهر على جهاز الطالب حين يفتح رفيق.')
       reload()
     } catch {
       toast('تعذّرت الاستعادة.')

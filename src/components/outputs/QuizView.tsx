@@ -98,7 +98,7 @@ export function QuizView({ output, questions, onClose }: { output: StudyOutput; 
     } catch (e) {
       if (c.signal.aborted) return
       put({ given, verdict: null })
-      setNote(e instanceof Unavailable ? 'التصحيح التلقائي غير متاح الآن. قارن إجابتك بالإجابة النموذجية وحدّد النتيجة.' : 'تعذّر التصحيح. قارن إجابتك بالإجابة النموذجية.')
+      setNote(e instanceof Unavailable ? 'التصحيح الآلي غير متاح الآن. قارن إجابتك بنموذج الإجابة وحدّد النتيجة.' : 'تعذّر التصحيح. قارن إجابتك بنموذج الإجابة.')
     }
     setBusy(false)
   }

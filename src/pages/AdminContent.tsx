@@ -170,7 +170,7 @@ export function AdminContent() {
           <div><strong>{num(verifiedN)}</strong><small>حلوله متحقق منها بحل مستقل</small></div>
         </div>
         <div className="meter" aria-hidden="true"><span style={{ width: `${(readyN / Math.max(1, total)) * 100}%` }} /></div>
-        <p className="hint">المحتوى من إعداد Gemini من صفحات الكتاب (النص وصور الصفحات)، ويُحذف آلياً كل بند لا يرتبط بمقطع من الدرس. يظهر للطالب موسوماً بأنه لم يراجعه معلم حتى تعلّمه «راجعته». الصفحة يجب أن تبقى مفتوحة أثناء التجهيز.</p>
+        <p className="hint">المحتوى من إعداد Gemini من صفحات الكتاب (النص وصور الصفحات)، ويُحذف آلياً كل بند لا يرتبط بمقطع من الدرس. يظهر للطالب موسوماً بأنه لم يراجعه معلم حتى تضع عليه علامة «راجعته». الصفحة يجب أن تبقى مفتوحة أثناء التجهيز.</p>
         <div className="btn-row">
           {job ? (
             <button className="btn" onClick={() => ctrl.current?.abort()}><Square aria-hidden="true" /> إيقاف</button>

@@ -19,7 +19,7 @@ function AccountSection() {
     e.preventDefault()
     try {
       await changePassword(cur, next)
-      toast('تغيّرت كلمة المرور. ادخل من جديد بكلمتك الجديدة.')
+      toast('تغيّرت كلمة المرور. سجّل الدخول من جديد بكلمة المرور الجديدة.')
       await signOut()
     } catch (x) {
       toast(x instanceof ServerError && x.code === 'weak_password' ? 'كلمة المرور يجب ألا تقل عن 8 أحرف.' : x instanceof ServerError && x.code === 'network' ? 'تعذّر الاتصال بالخادم.' : 'كلمة المرور الحالية غير صحيحة.')

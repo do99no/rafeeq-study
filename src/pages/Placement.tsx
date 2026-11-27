@@ -371,7 +371,7 @@ function Report({ results, order }: { results: SubjectResult[]; order: string[] 
               <span>{x.q}</span>
             </p>
             <dl className="answer-facts">
-              <div><dt>إجابتك</dt><dd>{x.given === null ? 'لم تجب' : x.options[x.given]}</dd></div>
+              <div><dt>إجابتك</dt><dd>{x.given === null ? 'لم تُجب' : x.options[x.given]}</dd></div>
               {!x.ok && <div><dt>الصحيحة</dt><dd>{x.options[x.correct]}</dd></div>}
             </dl>
             <p className="answer-why"><strong>لماذا:</strong> {x.why}</p>

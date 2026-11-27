@@ -78,7 +78,7 @@ export function AdminPlacement() {
 
       <section className="panel">
         <h2>الطلاب</h2>
-        {!state ? <p className="thinking"><LoaderCircle className="spin" aria-hidden="true" /> يحمّل…</p> : (
+        {!state ? <p className="thinking"><LoaderCircle className="spin" aria-hidden="true" /> جارٍ التحميل…</p> : (
           <ul className="admin-list">
             {state.people.map((p) => (
               <li key={p.id}>
@@ -136,7 +136,7 @@ export function AdminPlacement() {
               <h3>{r.subject}: {num(r.correct)} من {num(r.total)} ({num(r.percent)}٪)</h3>
               <ol className="admin-answers">
                 {r.items.map((x) => (
-                  <li key={x.id} data-ok={x.ok}>{x.ok ? <CircleCheck aria-label="صحيحة" /> : <TriangleAlert aria-label="خاطئة" />} {x.q} <small className="muted">— {x.given === null ? 'لم يجب' : x.options[x.given]}{x.ok ? '' : ` (الصحيح: ${x.options[x.correct]})`}</small></li>
+                  <li key={x.id} data-ok={x.ok}>{x.ok ? <CircleCheck aria-label="صحيحة" /> : <TriangleAlert aria-label="خاطئة" />} {x.q} <small className="muted">— {x.given === null ? 'لم يُجب' : x.options[x.given]}{x.ok ? '' : ` (الصحيح: ${x.options[x.correct]})`}</small></li>
                 ))}
               </ol>
             </section>
