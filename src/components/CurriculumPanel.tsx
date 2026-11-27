@@ -3,6 +3,9 @@ import { Download, LoaderCircle, LockKeyhole } from 'lucide-react'
 import { fileSize, num } from '../lib/format'
 import { downloadBook, normalCode, openLibrary, savedCode, type LibraryItem } from '../services/books/library'
 import { actions, getState, useData } from '../store/store'
+import { useDocs } from '../services/books/process'
+import { serverLibraryCode } from '../services/server/account'
+import { save } from '../services/storage/local'
 import { toast } from '../store/toast'
 
 /** كتب المنهج المشفرة على الموقع: تُنزَّل مرة واحدة إلى هذا الجهاز. */
@@ -24,10 +27,21 @@ export function CurriculumPanel() {
     }
   }
   useEffect(() => {
-    if (savedCode()) void unlock(savedCode())
+    if (savedCode()) return void unlock(savedCode())
+    // جهاز جديد: رمز المكتبة من الخادم إن أعدّه المسؤول، دون انتظار
+    void serverLibraryCode()
+      .then((c) => {
+        if (!c) return
+        save('library-code', c)
+        setCode(c)
+        void unlock(c)
+      })
+      .catch(() => {})
   }, [])
 
-  const have = new Set(books.map((b) => b.id))
+  // «منزّل» يعني أن ملفه وفهرسه على هذا الجهاز، لا أنه في قائمة الطالب المتزامنة من جهاز آخر
+  const docs = useDocs()
+  const have = new Set(books.filter((b) => docs[b.id]?.chunkCount).map((b) => b.id))
   const missing = items?.filter((i) => !have.has(i.id)) ?? []
 
   const get = async (list: LibraryItem[]) => {
