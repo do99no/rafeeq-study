@@ -24,6 +24,15 @@ import { PagesNote } from './PagesNote'
 const NONE: Message[] = []
 const plain = (t: string) => t.replace(/\*\*|`|#+ |^> ?/gm, '').replace(/\s?\[\d+\]/g, '')
 const canSpeak = 'speechSynthesis' in window
+/** أساليب شرح بديلة للرد الأخير، كلها من مصادر الدرس نفسها */
+const STYLES = [
+  { label: 'بتشبيه من الحياة', text: 'اشرح ما سبق بتشبيه من الحياة اليومية، ثم اربطه بنص الكتاب.' },
+  { label: 'بقصة قصيرة', text: 'اشرح ما سبق في قصة قصيرة بسيطة، ثم لخّص الفكرة العلمية في سطرين من الكتاب.' },
+  { label: 'بجدول', text: 'اعرض ما سبق في جدول منظم (العنصر، المعنى، مثال)، من الكتاب.' },
+  { label: 'كأني مبتدئ', text: 'اشرح ما سبق كأني أسمعه لأول مرة، بكلمات قليلة وبلا مصطلحات صعبة، ثم أعطني المصطلح الصحيح.' },
+  { label: 'بثلاث نقاط', text: 'لخّص ما سبق في ثلاث نقاط فقط هي الأهم للامتحان.' },
+  { label: 'اسألني لأكتشف', text: 'لا تشرح مباشرة: اسألني أسئلة متتابعة قصيرة توصلني إلى الفكرة بنفسي، سؤالاً واحداً كل مرة.' },
+]
 
 /** الأفعال السريعة على الدرس المختار */
 const LESSON_ACTIONS: { label: string; text: string; task: Task; icon: typeof Target }[] = [
@@ -81,6 +90,7 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
   const [busy, setBusy] = useState('')
   const [picking, setPicking] = useState(false)
   const [speaking, setSpeaking] = useState<string | null>(null)
+  const [styles, setStyles] = useState(false)
   const ctrl = useRef<AbortController>(null)
   const unmounted = useRef(false)
   const scroller = useRef<HTMLDivElement>(null)
@@ -529,6 +539,17 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
                   {n.label}
                 </button>
               ))}
+              {last.mode === 'ai' && last.task !== 'grade' && !last.check && (
+                <button className="chip" aria-expanded={styles} onClick={() => setStyles(!styles)}>
+                  بأسلوب آخر…
+                </button>
+              )}
+              {styles &&
+                STYLES.map((s) => (
+                  <button key={s.label} className="chip chip-soft" onClick={() => (setStyles(false), send({ text: s.text, task: 'answer' }))}>
+                    {s.label}
+                  </button>
+                ))}
               {focus && last.task === 'grade' && (() => {
                 const p = messages.findLast((x) => x.task === 'teach' && x.part)?.part
                 return p && p.k >= p.n

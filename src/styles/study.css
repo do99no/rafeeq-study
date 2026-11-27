@@ -24,6 +24,7 @@
 .check-q { font-weight: 600; font-size: 1.0625rem; line-height: 1.8; }
 .next-steps { width: 100%; }
 .chip-strong { border-color: var(--brand); color: var(--brand-ink); font-weight: 500; }
+.chip-soft { background: var(--brand-soft, #f1ecfb); border-style: dashed; }
 .lesson-actions { display: flex; gap: 0.45rem; overflow-x: auto; padding-bottom: 0.15rem; scrollbar-width: thin; }
 @media (min-width: 900px) { .lesson-actions { flex-wrap: wrap; } }
 .lesson-actions .chip { flex: none; min-height: 38px; font-size: 0.85rem; }
