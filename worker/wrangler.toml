@@ -11,10 +11,10 @@ ALLOWED_ORIGINS = "https://do99no.github.io,http://localhost:5173"
 
 # قاعدة بيانات الحسابات والمتابعة. تُنشأ مرة واحدة: npx wrangler d1 create rafeeq
 # ثم يوضع database_id الناتج هنا. الجداول تُنشأ تلقائياً عند أول طلب (worker/db.mjs).
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "rafeeq"
-# database_id = "..."
+[[d1_databases]]
+binding = "DB"
+database_name = "rafeeq"
+database_id = "fa34165c-9828-465f-8661-91e18ebbd9c0"
 
 # نسخ احتياطي يومي لبيانات الطالبين (الساعة 02:00 بتوقيت السودان)
 [triggers]
