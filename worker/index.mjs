@@ -61,7 +61,7 @@ async function chat(b, env, signal, ctx) {
 async function pooledChat(b, env, signal, ctx) {
   const ok = Array.isArray(b.messages) && b.messages.length > 0 && b.messages.length <= 40 && b.messages.every((m) => ['system', 'user', 'assistant'].includes(m?.role) && isText(m.content, 120_000) && Array.isArray(imgs(m)) && imgs(m).every((u) => typeof u === 'string' && u.length <= 1_500_000 && IMAGE.test(u)))
   // تجهيز الدروس (المسؤول) يقرأ صفحات الدرس كلها تقريباً
-  if (!ok || b.messages.reduce((n, m) => n + imgs(m).length, 0) > (ctx.role === 'admin' ? 8 : MAX_IMAGES)) throw new HttpError(400, 'bad_request')
+  if (!ok || b.messages.reduce((n, m) => n + imgs(m).length, 0) > (ctx.role === 'admin' ? 16 : MAX_IMAGES)) throw new HttpError(400, 'bad_request')
   const r = await poolChat(b, env, ctx, ctx.who, signal, (model, vision, extra) => ({
     // نماذج Gemini الحديثة «تفكّر» قبل الرد ويُحتسب تفكيرها من الحد: 1500 على الأقل كي لا يُبتر الرد
     model, stream: true, temperature: 0.2, max_tokens: Math.min(Math.max(Number(b.maxTokens) || 4000, 1500), ctx.role === 'admin' ? 32000 : 16000), ...(extra ?? {}),

@@ -74,26 +74,38 @@ export function AdminContent() {
           await downloadBook(code, t.book.item, () => {})
         }
         const doc = getDocs()[id]
-        for (const s of t.lessons) {
-          if (c.signal.aborted) return
-          setJob({ bookId: id, sectionId: s.id, phase: 'يبدأ' })
-          try {
-            const { pack, dropped } = await prepareLesson({ bookId: id, bookTitle: t.book.item.title, subject: t.book.item.subject, section: s }, doc, c.signal, (p) => setJob({ bookId: id, sectionId: s.id, ...p }))
-            await uploadPack(pack)
-            done++
-            say(`«${s.title}» (${t.book.item.title}): ${num(pack.steps.length)} خطوات، ${num(pack.quiz.length)} سؤالاً، ${num(pack.cards.length)} بطاقة${dropped ? `، حُذف ${num(dropped)} بنداً لم يثبت في الكتاب` : ''}`)
-            await loadIndex()
-          } catch (e) {
-            if (c.signal.aborted) return
-            if (e instanceof Unavailable) {
-              say('توقف التجهيز: نفدت الحصة المجانية أو الخدمة غير متاحة الآن. أكمل لاحقاً من حيث توقف.')
-              return
+        // ثلاثة دروس معاً من الكتاب نفسه (ضمن حد الطلبات في الدقيقة)، والكتب واحداً بعد الآخر
+        const queue = [...t.lessons]
+        let stop = false
+        const worker = async () => {
+          for (let s = queue.shift(); s && !stop && !c.signal.aborted; s = queue.shift()) {
+            const sec = s
+            setJob({ bookId: id, sectionId: sec.id, phase: 'يبدأ' })
+            try {
+              const { pack, dropped } = await prepareLesson({ bookId: id, bookTitle: t.book.item.title, subject: t.book.item.subject, section: sec }, doc, c.signal, (p) => setJob({ bookId: id, sectionId: sec.id, ...p }))
+              await uploadPack(pack)
+              done++
+              failed = 0
+              say(`«${sec.title}» (${t.book.item.title}): ${num(pack.steps.length)} خطوات، ${num(pack.quiz.length)} سؤالاً، ${num(pack.cards.length)} بطاقة${dropped ? `، حُذف ${num(dropped)} بنداً لم يثبت في الكتاب` : ''}`)
+              await loadIndex()
+            } catch (e) {
+              if (c.signal.aborted) return
+              if (e instanceof Unavailable) {
+                if (!stop) say('توقف التجهيز: نفدت الحصة المجانية أو الخدمة غير متاحة الآن. أكمل لاحقاً من حيث توقف.')
+                stop = true
+                return
+              }
+              failed++
+              say(`تعذّر تجهيز «${sec.title}» (${t.book.item.title}). سيُعاد في المرة القادمة.`)
+              if (failed >= 4) {
+                if (!stop) say('توقف التجهيز بعد أربع محاولات فاشلة متتالية.')
+                stop = true
+              }
             }
-            failed++
-            say(`تعذّر تجهيز «${s.title}» (${t.book.item.title}). سيُعاد في المرة القادمة.`)
-            if (failed >= 3 && !done) return say('توقف التجهيز بعد ثلاث محاولات فاشلة متتالية.')
           }
         }
+        await Promise.all([worker(), worker(), worker()])
+        if (stop || c.signal.aborted) return
       }
     } catch {
       say('تعذّر تنزيل الكتاب إلى هذا الجهاز.')

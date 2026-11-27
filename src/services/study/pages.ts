@@ -35,7 +35,7 @@ export function planPages(hits: Hit[], docs: Record<string, DocMeta>, max: numbe
   const bad = new Set(range ? docs[range.bookId]?.badPages ?? [] : [])
   const unread: PageRef[] = range ? [...bad].filter((p) => p >= range.from && p <= range.to).sort((a, b) => a - b).map((page) => ({ bookId: range.bookId, page })) : []
   // صفحة الدرس الأولى كثيراً ما تكون صورة عنوان: لا تُقدَّم على صفحات المحتوى
-  const order = [...weak, ...unread, ...symbolicPages]
+  const order = [...unread, ...weak, ...symbolicPages]
   const attach = order.slice(0, max)
   return {
     attach,

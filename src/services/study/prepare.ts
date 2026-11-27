@@ -27,7 +27,8 @@ export function lessonsOf(sections: Section[]): Section[] {
 }
 
 const BUDGET = 26_000
-const MAX_IMAGES = 8
+// أطول درس رياضيات ١٤ صفحة: كل صفحاته تُقرأ من صورها
+const MAX_IMAGES = 16
 
 function spread(hits: Hit[], budget: number) {
   const total = hits.reduce((s, h) => s + h.text.length, 0)
@@ -42,7 +43,8 @@ function pagesToSee(chunks: Chunk[], doc: DocMeta, s: Section) {
   const weak = [...new Set(chunks.filter((c) => c.weak).map((c) => c.page))]
   const bad = (doc.badPages ?? []).filter(inLesson)
   const ocr = [...new Set(chunks.filter((c) => c.ocr && !c.weak).map((c) => c.page))]
-  const all = [...new Set([...weak, ...bad, ...ocr])]
+  // الصفحة بلا نص أولاً: لا مصدر لمحتواها غير صورتها
+  const all = [...new Set([...bad, ...weak, ...ocr])]
   return { attach: all.slice(0, MAX_IMAGES).sort((a, b) => a - b), rest: all.slice(MAX_IMAGES), bad }
 }
 
