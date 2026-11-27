@@ -9,7 +9,7 @@ import { cleanCites, passagesText } from './assistant'
 import { reviewPack, type LessonPack, type PackReview, type PackCite, type PackNode, type PackQuestion, type PackStep } from './lessonPack'
 import { pageImages } from './pages'
 import { errataNote, errataOf } from '../../data/errata'
-import { applyVerdicts, itemsToSolve, SOLVE_ASK } from './verify'
+import { compare, flagItem, itemsToSolve, JUDGE_ASK, REVIEW_V, SOLVE_ASK } from './verify'
 import { STRICT, subjectGuide, SYMBOLIC } from './prompts'
 
 /**
@@ -278,7 +278,10 @@ export async function prepareLesson(l: Lesson, doc: DocMeta, signal: AbortSignal
   if (reused) {
     // نسخة عميقة: تُضاف العلامات دون المساس بالأصل
     pack = JSON.parse(JSON.stringify({ ...existing, status: undefined, updated: undefined, review: undefined })) as LessonPack
-    for (const x of [...pack.quiz, ...pack.worksheet]) delete x.flag
+    for (const x of [...pack.quiz, ...pack.worksheet]) {
+      delete x.flag
+      delete (x as { flagNote?: string }).flagNote
+    }
     review = reviewPack(pack)
   } else {
   const rawA = await gen('A')
@@ -319,13 +322,24 @@ export async function prepareLesson(l: Lesson, doc: DocMeta, signal: AbortSignal
       const list = Array.isArray(j?.answers) ? (j!.answers as Record<string, unknown>[]) : []
       const finals = items.map((_, i) => str(list.find((x) => Number(x?.i) === i + 1)?.final))
       if (finals.some(Boolean)) {
-        applyVerdicts(pack, items, finals)
         verified = 'independent'
+        const { disputed } = compare(items, finals)
+        if (disputed.length) {
+          // تحكيم ثالث يحسب بنفسه ويختار؛ لا يُرفع الوسم إلا إذا أكد الإجابة المحفوظة
+          onProgress?.({ phase: 'يحكّم بين الحلين المختلفين' })
+          const jr = await ask(system, passages + JUDGE_ASK(disputed.map((d) => ({ q: d.item.q, a: d.item.stored, b: d.final, options: d.item.options }))), shots, note, signal)
+          const jj = parseJson(jr.text)
+          const vs = Array.isArray(jj?.verdicts) ? (jj!.verdicts as Record<string, unknown>[]) : []
+          disputed.forEach((d, i) => {
+            const v = vs.find((x) => Number(x?.i) === i + 1)
+            if (str(v?.pick) !== 'A') flagItem(pack, d.item.key, `حل مستقل: ${d.final}؛ التحكيم: ${str(v?.pick) || 'لا حكم'} ${str(v?.final)}`)
+          })
+        }
       }
     }
   } else if (symbolic)
     for (const x of [...pack.quiz, ...pack.worksheet]) if (x.type === 'problem') x.flag = 'مسألة لم يُتحقق من حلها آلياً؛ راجع الناتج في صفحة الكتاب.'
-  review = reviewPack(pack, verified)
+  review = { ...reviewPack(pack, verified), v: REVIEW_V }
   pack.review = review
   return { pack, dropped, reused }
 }

@@ -52,6 +52,7 @@ export async function put(request, env, book, section, body) {
   if (r && Array.isArray(r.missing) && Array.isArray(r.issues) && !r.missing.length && !r.issues.length) parts.push('checked')
   if (r?.flagged > 0) parts.push('flagged')
   if (r?.verified === 'independent') parts.push('verified')
+  if (Number.isInteger(r?.v)) parts.push(`rv${r.v}`)
   const json = JSON.stringify(p)
   if (json.length > MAX_PACK) throw new HttpError(413, 'too_large')
   const now = Date.now()

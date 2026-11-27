@@ -50,6 +50,8 @@ export interface PackReview {
   /** كيف تُحقق من حلول المسائل */
   verified: 'independent' | 'none'
   at: number
+  /** نسخة قواعد الفحص: النسخ الأقدم يُعاد فحصها */
+  v?: number
 }
 export interface PackNode {
   label: string
