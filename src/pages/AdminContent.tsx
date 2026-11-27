@@ -57,7 +57,8 @@ export function AdminContent() {
   const say = (t: string) => setLog((l) => [`${new Date().toLocaleTimeString('ar')}: ${t}`, ...l].slice(0, 60))
 
   /** يجهّز دروس الكتب المعطاة واحداً تلو الآخر حتى يكتمل أو تنفد الحصة أو يُوقف */
-  const run = async (targets: { book: Book; lessons: Section[] }[]) => {
+  /** fresh: تجهيز جديد كامل للدرس (بعد تصحيح موثق مثلاً) بدل فحص الموجود */
+  const run = async (targets: { book: Book; lessons: Section[] }[], fresh = false) => {
     if (!code || job) return
     const c = (ctrl.current = new AbortController())
     await refresh()
@@ -86,7 +87,7 @@ export function AdminContent() {
             const sec = s
             setJob({ bookId: id, sectionId: sec.id, phase: 'يبدأ' })
             try {
-              const { pack, dropped, reused } = await prepareLesson({ bookId: id, bookTitle: t.book.item.title, subject: t.book.item.subject, section: sec }, doc, c.signal, (p) => setJob({ bookId: id, sectionId: sec.id, ...p }), old.get(sec.id))
+              const { pack, dropped, reused } = await prepareLesson({ bookId: id, bookTitle: t.book.item.title, subject: t.book.item.subject, section: sec }, doc, c.signal, (p) => setJob({ bookId: id, sectionId: sec.id, ...p }), fresh ? undefined : old.get(sec.id))
               await uploadPack(pack)
               done++
               failed = 0
@@ -224,7 +225,7 @@ export function AdminContent() {
                       </small>
                     </span>
                     {busy ? <LoaderCircle className="spin" aria-label="يُجهَّز الآن" /> : i ? complete(i) ? <CircleCheck aria-label="جاهز" /> : <TriangleAlert aria-label="ناقص" /> : null}
-                    <button className="icon-btn" disabled={!!job} onClick={() => void run([{ book: b, lessons: [s] }])} aria-label={i ? `أعد تجهيز «${s.title}»` : `جهّز «${s.title}»`} title={i ? 'أعد التجهيز' : 'جهّز'}>
+                    <button className="icon-btn" disabled={!!job} onClick={() => void run([{ book: b, lessons: [s] }], !!i)} aria-label={i ? `أعد تجهيز «${s.title}»` : `جهّز «${s.title}»`} title={i ? 'أعد التجهيز' : 'جهّز'}>
                       {i ? <RefreshCw /> : <Play />}
                     </button>
                     {i && (
