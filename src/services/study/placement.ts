@@ -236,6 +236,7 @@ export function unitsOf(sections: Section[], lessons: Section[], bookTitle: stri
 
 const MATH = 'الرياضيات'
 const SCIENCE = new Set(['الفيزياء', 'الكيمياء', 'العلوم الهندسية'])
+const WEAK_NOTE = 'نص هذه الصفحة مقروء آلياً بدقة منخفضة لأن فيها معادلات؛ افتح الصفحة الأصلية لترى المصدر.'
 const INTRO = /مقدمة|تمهيد|نبذة تاريخية|تاريخ/
 /** هل في الحزمة ما يكفي لاعتبار الدرس جاهزاً (الشرط نفسه في لوحة الجاهزية) */
 export function packComplete(subject: string, i?: PackInfo) {
@@ -253,11 +254,13 @@ export function eligible(subject: string, p: LessonPack, x: LessonPack['quiz'][n
   if (options.some((o) => /^[(]?[أابجدهـa-d][).]\s/.test(o))) return null
   if (x.type === 'tf' && !(options.length === 2 && options.includes('صح') && options.includes('خطأ')) && !/^(true|false)$/i.test(x.answer)) return null
   const c = p.cites.find((y) => y.n === x.n)
-  if (!c || c.weak || !c.quote || errataPage(p.bookId, c.page)) return null
+  if (!c || !c.quote || errataPage(p.bookId, c.page)) return null
   // الإجابة واردة في مقطع الكتاب (أو السؤال مرتبط به في الرياضيات، وحلوله متحقق منها بحل مستقل)
   // مسائل الدروس المتحقق منها بحل مستقل (الرياضيات، ومسائل العلوم): المقطع في صفحات الدرس يكفي، والمراجعة اليدوية تعيد الحل
   const problem = subject === MATH || (SCIENCE.has(subject) && /[0-9٠-٩]/.test(x.q + x.answer))
   if (problem && verified && c.page >= p.from && c.page <= p.to && x.why.trim().length >= 8) return { options, cite: c }
+  // نص الصفحة مقروء آلياً بدقة منخفضة: لا يصلح دليلاً إلا لمسألة متحقق منها بحل مستقل (أعلاه)
+  if (c.weak) return null
   const grounded = subject === MATH ? overlap(x.q, c.quote) >= 0.2 : x.type === 'mcq' ? overlap(x.answer, c.quote) >= 0.5 && overlap(x.q, c.quote) >= 0.2 : overlap(x.q, c.quote) >= 0.4
   if (!grounded || x.why.trim().length < 8) return null
   return { options, cite: c }
@@ -298,7 +301,7 @@ export function buildBank(subject: string, books: BankBook[], info: (b: string, 
           if (!e) continue
           const id = itemId(b.id, s.id, x.q)
           if (rev.rejected[id]) continue
-          pool.push({ id, bookId: b.id, sectionId: s.id, book: b.title, unit: unit.get(s.id), lesson: s.title, page: e.cite.page, ...(e.cite.printed ? { printed: e.cite.printed } : {}), quote: e.cite.quote.slice(0, 850), type: x.type as 'mcq' | 'tf', level: x.level, q: x.q, options: e.options, answer: x.answer.trim(), why: x.why.trim() })
+          pool.push({ id, bookId: b.id, sectionId: s.id, book: b.title, unit: unit.get(s.id), lesson: s.title, page: e.cite.page, ...(e.cite.printed ? { printed: e.cite.printed } : {}), quote: e.cite.weak ? WEAK_NOTE : e.cite.quote.slice(0, 850), type: x.type as 'mcq' | 'tf', level: x.level, q: x.q, options: e.options, answer: x.answer.trim(), why: x.why.trim() })
         }
       const u = unit.get(s.id) ?? b.title
       let slot = slots.find((x) => x.unit === u && x.lessons[0]?.book.id === b.id)
