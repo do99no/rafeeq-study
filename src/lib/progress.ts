@@ -17,6 +17,7 @@
  *    - الدرس الذي فيه أخطاء لم يراجعها الطالب بعد: لا يزيد إتقانه على ٧٠ حتى تُراجع.
  *    - إتقان المادة = متوسط إتقان دروسها مرجَّحاً بعدد الأسئلة، ولا يُعرض إلا بعد ٥ إجابات على الأقل في المادة.
  *
+ * إجابات تحديد المستوى تدخل في الإتقان فقط، لا في التغطية: الاختبار ليس دراسة للدرس.
  * لا أرقام تقديرية ولا افتراضية: ما لا بيانات له يظهر «لم يبدأ بعد» أو «بيانات غير كافية».
  */
 export interface PLesson {
@@ -61,6 +62,8 @@ export interface LessonProgress extends PLesson {
   mastery: number | null
   openMistakes: number
   lastAt?: number
+  /** درسه فعلاً (سجل دراسة أو اختبار)؛ إجابات تحديد المستوى وحدها لا تجعله مبدوءاً */
+  studiedHere?: boolean
 }
 export interface SubjectProgress {
   subject: string
@@ -118,11 +121,13 @@ export function computeProgress(input: PInput): SubjectProgress[] {
           if (!l) return
           l.answered++
           if (ok) l.correct++
+          l.studiedHere = true
           l.lastAt = Math.max(l.lastAt ?? 0, a.at)
         })
       } else if (target) {
         target.answered += a.total
         target.correct += a.score
+        target.studiedHere = true
         target.lastAt = Math.max(target.lastAt ?? 0, a.at)
       }
     }
@@ -152,7 +157,7 @@ export function computeProgress(input: PInput): SubjectProgress[] {
       if (done) {
         l.state = 'done'
         l.credit = 1
-      } else if (s.length || l.answered) {
+      } else if (s.length || l.studiedHere) {
         l.state = 'started'
         l.credit = taught ? Math.min(0.6, (0.6 * taught.k) / Math.max(1, taught.n)) : 0.3
       }
