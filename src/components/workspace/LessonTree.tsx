@@ -71,7 +71,7 @@ export function LessonTree({ notebook, books, off, onOff, onAdd, onPick }: Props
                 return (
                   <li key={s.id}>
                     <button className="lesson-row" data-level={s.level} aria-current={active ? 'true' : undefined} onClick={() => onPick(focusOf(b.id, s))}>
-                      {ls && s.level === 2 ? <span className="ls-dot" data-state={ls} aria-hidden="true" /> : null}
+                      {ls && ls !== 'none' && s.level === 2 ? <span className="ls-dot" data-state={ls} aria-hidden="true" /> : null}
                       <span className="grow">
                         {s.title}
                         {unitLessons.length > 1 && unitDone > 0 && (
