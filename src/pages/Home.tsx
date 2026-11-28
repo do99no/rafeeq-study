@@ -13,7 +13,7 @@ import { isSearchable, useDocs } from '../services/books/process'
 import { useData, useStore } from '../store/store'
 import { PlanCard } from '../components/PlanCard'
 import { Ring, SubjectIcon } from '../components/SubjectVisual'
-import { StudyPlan } from '../components/StudyPlan'
+import { IntensivePlan } from '../components/IntensivePlan'
 
 export function Home() {
   const data = useData()
@@ -76,7 +76,7 @@ export function Home() {
           ))}
         </ul>
       )}
-      <StudyPlan />
+      <IntensivePlan />
       <section aria-labelledby="subj-h">
         <div className="section-head">
           <h2 id="subj-h">موادي</h2>

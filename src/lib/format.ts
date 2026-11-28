@@ -1,6 +1,6 @@
 import { getState } from '../store/store'
 
-const locale = () => `ar-EG-u-nu-${getState().data.settings.digits}`
+export const locale = () => `ar-EG-u-nu-${getState().data.settings.digits}`
 
 export const num = (n: number) => n.toLocaleString(locale())
 

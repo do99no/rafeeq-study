@@ -224,6 +224,8 @@ export interface Settings {
   rate?: number
   /** أسلوب الشرح الصوتي: مدرس بلغة سهلة ولمسة مصرية خفيفة (الافتراضي)، أو الفصحى كما كُتبت */
   voiceStyle?: 'teacher' | 'fusha'
+  /** الخطة المكثفة: بدايتها الفعلية وخط الأساس ومهام اليوم المثبتة */
+  intensive?: { start: string; finish: string; exam: string; baselineMin: number; today?: { date: string; sessions: { key: string; kind: string; subject: string; title: string; minutes: number; steps: string[]; bookId?: string; sectionId?: string; from?: number; to?: number; ready?: boolean; part?: { k: number; n: number } }[]; checked: string[] } }
 }
 
 /** كل ما يخص طالباً واحداً. يُخزَّن منفصلاً عن الطالب الآخر. */

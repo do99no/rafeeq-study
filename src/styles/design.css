@@ -104,3 +104,42 @@
 .panel .assess .btn-primary { background: transparent; color: var(--brand-ink); border-color: var(--brand); }
 .panel .assess .btn-primary:hover:not(:disabled) { background: var(--brand-soft); }
 @media (min-width: 900px) { .panel .assess-grid { grid-template-columns: 1fr 1fr; column-gap: 2rem; } .panel .assess:nth-last-child(2):nth-child(odd) { border-bottom: 0; } }
+
+/* الخطة المكثفة */
+.iplan { display: grid; gap: 1rem; }
+.iplan-head { display: flex; align-items: center; gap: 1rem; }
+.iplan-head h2 { margin: 0 0 0.2rem; font-size: 1.15rem; }
+.iplan-head .ring2-num { font-size: 0.85rem; color: var(--brand-ink); }
+.iplan-alert { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0; padding: 0.75rem 0.9rem; border-radius: var(--r-sm); background: var(--warn-soft); color: var(--ink); line-height: 1.8; }
+.iplan-alert svg { flex: none; width: 1.2rem; height: 1.2rem; color: var(--warn); margin-top: 0.3rem; }
+.iplan-meter { display: grid; gap: 0.35rem; font-size: 0.9rem; color: var(--ink-2); margin-bottom: 0.4rem; }
+.iplan-list { list-style: none; padding: 0; margin: 0; display: grid; }
+.iplan-list > li { position: relative; display: flex; align-items: center; gap: 0.4rem; padding-inline-start: 1.3rem; }
+.iplan-list > li::before { content: ''; position: absolute; inset-inline-start: 0.32rem; top: 0; bottom: 0; width: 2px; background: var(--line); }
+.iplan-list > li:first-child::before { top: 1.3rem; }
+.iplan-list > li:last-child::before { bottom: calc(100% - 1.3rem); }
+.iplan-list > li::after { content: ''; position: absolute; inset-inline-start: 0; top: 1.05rem; width: 0.75rem; height: 0.75rem; border-radius: 50%; border: 2px solid var(--line); background: var(--surface); }
+.iplan-list > li[data-done='true']::after { background: var(--ok); border-color: var(--ok); }
+.iplan-list > li[data-current='true']::after { border-color: var(--brand); background: var(--brand); box-shadow: 0 0 0 4px var(--brand-soft); }
+.iplan-item { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.5rem; text-align: start; padding: 0.6rem 0.5rem; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+.iplan-item:hover { background: var(--sunken); }
+.iplan-item .grow { display: grid; gap: 0.1rem; min-width: 0; }
+.iplan-item strong { font-weight: 500; }
+.iplan-list > li[data-current='true'] .iplan-item { background: var(--brand-soft); }
+.iplan-list > li[data-current='true'] .iplan-item strong { font-weight: 600; color: var(--brand-ink); }
+.iplan-list > li[data-done='true'] .iplan-item strong { color: var(--ink-2); text-decoration: line-through; text-decoration-color: var(--line); }
+.iplan-steps { font-size: 0.82rem; color: var(--brand-ink); line-height: 1.7; }
+.iplan-item > svg { flex: none; width: 1rem; height: 1rem; color: var(--ink-2); }
+.iplan-ok { width: 1.1rem; height: 1.1rem; color: var(--ok); flex: none; margin-inline-end: 0.5rem; }
+.iplan-more > summary { cursor: pointer; color: var(--ink-2); padding: 0.3rem 0; }
+.iplan-subjects { list-style: none; padding: 0; margin: 0.5rem 0; }
+.iplan-subjects li { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0; border-bottom: 1px solid var(--line); }
+.iplan-subjects .grow { display: grid; min-width: 0; }
+.iplan-tag { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; color: var(--warn); }
+.iplan-tag svg { width: 0.9rem; height: 0.9rem; }
+.iplan-day { display: flex; gap: 0.4rem; align-items: flex-start; line-height: 1.8; font-size: 0.88rem; }
+.iplan-day svg { flex: none; width: 1rem; height: 1rem; margin-top: 0.35rem; }
+.iplan-days { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.9rem; }
+.iplan-days h3 { font-size: 0.98rem; margin: 0 0 0.3rem; }
+.iplan-days ul { margin: 0; padding-inline-start: 1.1rem; line-height: 1.9; font-size: 0.92rem; }
+.iplan-rest { margin-top: 0.4rem; background: none; border: 0; color: var(--ink-2); font: inherit; cursor: pointer; padding: 0.2rem 0; }

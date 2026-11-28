@@ -10,12 +10,14 @@ import { api, serverLibraryCode } from '../services/server/account'
 import type { PackInfo } from '../services/study/lessonPack'
 import { adminPlacementResults } from '../services/study/placement'
 import { progressInput, SUBJECT_ORDER } from '../services/study/progressData'
+import { buildIntensive, MAX_STUDY_MIN } from '../lib/intensive'
+import { TARGET } from '../services/study/intensiveData'
 
 const NAMES: Record<string, string> = { mohamed: 'محمد', amna: 'أمنة' }
 type Cat = { id: string; title: string; subject: string; sections: Section[] }[]
 
 /** تقدم طالب كما يراه المسؤول: من نسخة بياناته في الخادم، بالحساب نفسه الذي يراه الطالب */
-async function loadStudent(id: string, cat: Cat, ready: Set<string>): Promise<{ progress: SubjectProgress[]; syncedAt?: number; examAt?: number }> {
+async function loadStudent(id: string, cat: Cat, ready: Set<string>): Promise<{ progress: SubjectProgress[]; syncedAt?: number; examAt?: number; intensive?: { start: string; baselineMin: number } }> {
   const r = await api<{ docs: { key: string; json: string; updated: number }[] }>(`/admin/data/${id}`)
   const core = r.docs.find((d) => d.key === 'core')
   const data = core ? JSON.parse(core.json) : {}
@@ -23,7 +25,7 @@ async function loadStudent(id: string, cat: Cat, ready: Set<string>): Promise<{ 
   const input = progressInput(cat, (b) => cat.find((c) => c.id === b)?.sections, { studied: data.studied ?? {}, attempts: data.attempts ?? [], outputs: data.outputs ?? [], mistakes: data.mistakes ?? [] }, placement, ready, id)
   const plan = await api<{ plan?: { examDate?: string } }>(`/admin/student/${id}`).then((x) => x.plan).catch(() => undefined)
   const exam = plan?.examDate || data.settings?.examDate
-  return { progress: computeProgress(input), syncedAt: core?.updated, examAt: exam ? Date.parse(exam + 'T00:00:00') : undefined }
+  return { progress: computeProgress(input), syncedAt: core?.updated, examAt: exam ? Date.parse(exam + 'T00:00:00') : undefined, intensive: data.settings?.intensive }
 }
 let catCache: Promise<{ cat: Cat; ready: Set<string> }> | undefined
 const loadShared = () =>
@@ -41,14 +43,14 @@ const overall = (p: SubjectProgress[]) => {
 
 /** لوحة المسؤول: الطالبان معاً (مقارنة إدارية للمتابعة فقط، لا تظهر لأي طالب)، ثم تفاصيل كل طالب */
 export function AdminProgress() {
-  const [state, setState] = useState<Record<string, { progress: SubjectProgress[]; syncedAt?: number; examAt?: number }> | null>(null)
+  const [state, setState] = useState<Record<string, { progress: SubjectProgress[]; syncedAt?: number; examAt?: number; intensive?: { start: string; baselineMin: number } }> | null>(null)
   const [error, setError] = useState('')
   const [tab, setTab] = useState('mohamed')
   useEffect(() => {
     void (async () => {
       try {
         const { cat, ready } = await loadShared()
-        const out: Record<string, { progress: SubjectProgress[]; syncedAt?: number; examAt?: number }> = {}
+        const out: Record<string, { progress: SubjectProgress[]; syncedAt?: number; examAt?: number; intensive?: { start: string; baselineMin: number } }> = {}
         for (const id of ['mohamed', 'amna']) out[id] = await loadStudent(id, cat, ready).catch(() => ({ progress: [] }))
         setState(out)
       } catch {
@@ -65,6 +67,8 @@ export function AdminProgress() {
     return <td>{p.done || p.started ? `${num(p.coverage)}٪` : 'لم يبدأ'}<small className="muted">{p.mastery !== null ? ` · إتقان ${num(p.mastery)}٪` : ''}</small></td>
   }
   const cur = state[tab]
+  const ip = cur && cur.progress.length ? buildIntensive({ lessons: cur.progress.flatMap((p) => p.lessons.map((l) => ({ subject: p.subject, bookId: l.bookId, sectionId: l.sectionId, title: l.title, page: l.page, endPage: l.endPage, state: l.state, credit: l.credit, ready: true }))), start: cur.intensive?.start ?? new Date().toISOString().slice(0, 10), finish: TARGET.finish, exam: TARGET.exam, baselineMin: cur.intensive?.baselineMin }) : null
+  const h = (m: number) => `${num(Math.floor(m / 60))} س${m % 60 ? ` و${num(Math.round(m % 60))} د` : ''}`
   const alerts = cur ? nudges(cur.progress, { num, examAt: cur.examAt }).filter((n) => n.kind !== 'praise') : []
   return (
     <div className="page">
@@ -102,6 +106,14 @@ export function AdminProgress() {
             <>
               <h3 className="mini-h">يحتاج إلى متابعة</h3>
               <ul className="nudges">{alerts.slice(0, 6).map((n, i) => <li key={i} data-kind={n.kind}><span className="grow">{n.text}</span></li>)}</ul>
+            </>
+          )}
+          {ip && (
+            <>
+              <h3 className="mini-h">خطة إنهاء المنهج (حتى ٢٨ يناير)</h3>
+              <p className={ip.feasible && ip.behindMin <= 30 ? 'muted' : 'warn'}>
+                {cur.intensive ? `بدأت ${cur.intensive.start}. ` : 'لم تُنشأ خطته بعد (تُنشأ عند دخوله). '}المتبقي {h(ip.remainingMin)}، أي {h(ip.requiredPerDay)} يومياً (الأقصى {h(MAX_STUDY_MIN)})، والإنهاء المتوقع {ip.projectedFinish}{ip.behindMin ? `، متأخر ${h(ip.behindMin)} عن خط الأساس` : ''}{ip.subjects.some((x) => x.behind) ? `. مواد معرضة للتأخر: ${ip.subjects.filter((x) => x.behind).map((x) => x.subject).join('، ')}` : ''}.
+              </p>
             </>
           )}
           <h3 className="mini-h">المواد</h3>
