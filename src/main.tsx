@@ -19,3 +19,13 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+// العمل دون اتصال: في النسخة المنشورة فقط
+if (import.meta.env.PROD && 'serviceWorker' in navigator)
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker
+      .register('./sw.js')
+      .then(() => navigator.serviceWorker.ready)
+      .then((reg) => reg.active?.postMessage({ cache: performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.startsWith(location.origin)) }))
+      .catch(() => {})
+  })

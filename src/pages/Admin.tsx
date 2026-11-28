@@ -186,6 +186,49 @@ function StudentCard({ s }: { s: Summary }) {
   )
 }
 
+/** حالة الخدمات في مكان واحد: النسخ الاحتياطية، واختبارات تحديد المستوى، والذكاء الاصطناعي. لا مفاتيح ولا بيانات حساسة */
+function SystemStatus() {
+  const amna = useLoad<{ backups: { at: number; size: number }[] }>('/admin/backups/amna')
+  const mohamed = useLoad<{ backups: { at: number; size: number }[] }>('/admin/backups/mohamed')
+  const pl = useLoad<{ banks: { subject: string; n: number; published: boolean }[] }>('/admin/placement')
+  const ai = useLoad<{ providers: { configured: boolean; models: Record<string, string> }[] }>('/status')
+  const day = 86_400_000
+  const backup = (name: string, d: { backups: { at: number; size: number }[] } | null, err: string) => {
+    const last = d?.backups[0]
+    const ok = !!last && Date.now() - last.at < 2 * day
+    return (
+      <li data-ok={ok}>
+        <strong>نسخة {name}</strong>
+        <span className="muted">{err ? 'تعذّرت القراءة' : !d ? '…' : last ? `آخرها ${new Date(last.at).toLocaleString('ar-EG')} (${num(Math.round(last.size / 1024))} ك.ب)${ok ? '' : ' · أقدم من يومين'}` : 'لا نسخ بعد'}</span>
+      </li>
+    )
+  }
+  const banks = pl.data?.banks ?? []
+  const pub = banks.filter((b) => b.published)
+  const p = ai.data?.providers[0]
+  return (
+    <section className="panel sys-status">
+      <h2 className="mini-h">حالة الخدمات</h2>
+      <ul className="sys-list">
+        {backup('أمنة', amna.data, amna.err)}
+        {backup('محمد', mohamed.data, mohamed.err)}
+        <li data-ok={banks.length > 0 && pub.length === banks.length}>
+          <strong>تحديد المستوى</strong>
+          <span className="muted">{pl.err ? 'تعذّرت القراءة' : !pl.data ? '…' : `منشور ${num(pub.length)} من ${num(banks.length)} مواد${pub.length < banks.length ? `؛ بانتظار: ${banks.filter((b) => !b.published).map((b) => b.subject).join('، ')}` : ''}`}</span>
+        </li>
+        <li data-ok={!!p?.configured}>
+          <strong>الذكاء الاصطناعي</strong>
+          <span className="muted">{ai.err ? 'تعذّرت القراءة' : !ai.data ? '…' : p?.configured ? `يعمل${p.models.embed ? '، والبحث الدلالي متاح' : ''}` : 'غير مهيأ'}</span>
+        </li>
+        <li data-ok={false}>
+          <strong>الصوت التعليمي</strong>
+          <span className="muted">صوت المتصفح حالياً؛ الصوت المستنسخ بانتظار تجربتك واعتمادك</span>
+        </li>
+      </ul>
+    </section>
+  )
+}
+
 function Overview() {
   const { data, err, reload } = useLoad<{ students: Summary[]; at: number }>('/admin/overview')
   return (
@@ -200,6 +243,7 @@ function Overview() {
       {err && <p className="warn">{err}</p>}
       {!data && !err && <p className="page-loading">جارٍ التحميل…</p>}
       <div className="admin-grid">{data?.students.map((s) => <StudentCard key={s.id} s={s} />)}</div>
+      <SystemStatus />
       <section className="panel">
         <h2 className="mini-h">المحتوى التدريبي وما ينقص</h2>
         <p className="muted small">امتحانات الشهادة المتوفرة: أبريل 2020 لست مواد (من موقع حكومي، تُفتح من مصدرها)، وامتحان تجريبي للعلوم الهندسية. لا نموذج إجابة رسمياً لأي سنة. ومن الكتب: {EXAM_SOURCES.map((x) => x.title).join('، ')}.</p>

@@ -143,3 +143,25 @@
 .iplan-days h3 { font-size: 0.98rem; margin: 0 0 0.3rem; }
 .iplan-days ul { margin: 0; padding-inline-start: 1.1rem; line-height: 1.9; font-size: 0.92rem; }
 .iplan-rest { margin-top: 0.4rem; background: none; border: 0; color: var(--ink-2); font: inherit; cursor: pointer; padding: 0.2rem 0; }
+
+/* شريط الانقطاع: هادئ، لا يغطي المحتوى */
+.offline-bar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius, 12px);
+  background: var(--warn-soft, #fff4e0);
+  color: var(--text, #2b2340);
+  border: 1px solid var(--warn, #c98a12);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+.offline-bar svg { flex: none; width: 1.1rem; height: 1.1rem; margin-top: 0.2rem; color: var(--warn, #c98a12); }
+
+/* حالة الخدمات في لوحة المسؤول */
+.sys-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.sys-list li { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; align-items: baseline; padding: 0.5rem 0.75rem; border-radius: 10px; background: var(--surface-2, rgba(0,0,0,.03)); border-inline-start: 3px solid var(--warn); }
+.sys-list li[data-ok='true'] { border-inline-start-color: var(--ok); }
+.sys-list li[data-ok='true'] strong::after { content: ' ✓'; color: var(--ok); }

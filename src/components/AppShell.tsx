@@ -47,6 +47,28 @@ function TrackChip() {
   )
 }
 
+/** حالة الاتصال ظاهرة دائماً عند الانقطاع: ما يعمل وما ينتظر عودة الإنترنت */
+function OfflineBar() {
+  const [online, setOnline] = useState(() => navigator.onLine)
+  useEffect(() => {
+    const on = () => setOnline(true)
+    const off = () => setOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => {
+      window.removeEventListener('online', on)
+      window.removeEventListener('offline', off)
+    }
+  }, [])
+  if (online) return null
+  return (
+    <p className="offline-bar" role="status">
+      <CloudOff aria-hidden="true" />
+      <span>دون اتصال بالإنترنت. تعمل الكتب والدروس الجاهزة والمراجعة المحفوظة على جهازك، ويُحفظ تقدمك ويُرفع عند عودة الاتصال. المحادثة مع رفيق وتوليد المحتوى الجديد تحتاج إلى اتصال.</span>
+    </p>
+  )
+}
+
 /** الطالب الداخل بحسابه: اسمه، وحالة الحفظ على الخادم، وهل يُحتسب وقت الدراسة الآن */
 function AccountBox() {
   const session = useAccount().session
@@ -128,7 +150,10 @@ export function AppShell({ path, compact, children }: { path: string; compact: b
           </div>
         </Dialog>
       )}
-      <main className="main">{children}</main>
+      <main className="main">
+        <OfflineBar />
+        {children}
+      </main>
     </div>
   )
 }

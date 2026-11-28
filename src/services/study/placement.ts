@@ -254,7 +254,7 @@ export function packComplete(subject: string, i?: PackInfo) {
 const errataPage = (bookId: string, page: number) => ERRATA.some((e) => e.bookId === bookId && e.page === page)
 
 /** سؤال يصلح للبنك: يُفحص آلياً قبل المراجعة اليدوية */
-export function eligible(subject: string, p: LessonPack, x: LessonPack['quiz'][number], verified = false) {
+export function eligible(subject: string, p: LessonPack, x: LessonPack['quiz'][number], verified = false, relaxed = false) {
   if (x.flag || (x.type !== 'mcq' && x.type !== 'tf')) return null
   const options = (x.options ?? []).map((o) => o.trim()).filter(Boolean)
   if (options.length < 2 || new Set(options).size !== options.length || !options.includes(x.answer.trim())) return null
@@ -267,6 +267,8 @@ export function eligible(subject: string, p: LessonPack, x: LessonPack['quiz'][n
   // مسائل الدروس المتحقق منها بحل مستقل (الرياضيات، ومسائل العلوم): المقطع في صفحات الدرس يكفي، والمراجعة اليدوية تعيد الحل
   const problem = subject === MATH || (SCIENCE.has(subject) && /[0-9٠-٩]/.test(x.q + x.answer))
   if (problem && verified && c.page >= p.from && c.page <= p.to && x.why.trim().length >= 8) return { options, cite: c }
+  // وحدة كاملة بلا سؤال صالح (آيات وتجويد نصها الآلي غير موثوق): مرشحو صفحات الدرس، والحكم للمراجعة اليدوية على صورة الصفحة
+  if (relaxed && c.page >= p.from && c.page <= p.to && x.why.trim().length >= 8) return { options, cite: { ...c, weak: true } }
   // نص الصفحة مقروء آلياً بدقة منخفضة: لا يصلح دليلاً إلا لمسألة متحقق منها بحل مستقل (أعلاه)
   if (c.weak) return null
   const grounded = subject === MATH ? overlap(x.q, c.quote) >= 0.2 : x.type === 'mcq' ? overlap(x.answer, c.quote) >= 0.5 && overlap(x.q, c.quote) >= 0.2 : overlap(x.q, c.quote) >= 0.4
@@ -315,6 +317,21 @@ export function buildBank(subject: string, books: BankBook[], info: (b: string, 
       let slot = slots.find((x) => x.unit === u && x.lessons[0]?.book.id === b.id)
       if (!slot) slots.push((slot = { unit: u, lessons: [] }))
       slot.lessons.push({ book: b, s, pool })
+    }
+  }
+  // وحدة لم يصلح منها سؤال بالقاعدة الصارمة: مرشحوها بقاعدة مخففة كي لا تغيب عن الاختبار، ولا يدخل منهم إلا ما اعتُمد يدوياً
+  for (const slot of slots) {
+    if (slot.lessons.some((l) => l.pool.length)) continue
+    for (const l of slot.lessons) {
+      const p = packs(l.book.id)[l.s.id]
+      if (!p || !packComplete(subject, info(l.book.id, l.s.id))) continue
+      for (const x of p.quiz) {
+        const e = eligible(subject, p, x, false, true)
+        if (!e) continue
+        const id = itemId(l.book.id, l.s.id, x.q)
+        if (rev.rejected[id]) continue
+        l.pool.push({ id, bookId: l.book.id, sectionId: l.s.id, book: l.book.title, unit: slot.unit, lesson: l.s.title, page: e.cite.page, ...(e.cite.printed ? { printed: e.cite.printed } : {}), quote: WEAK_NOTE, type: x.type as 'mcq' | 'tf', level: x.level, q: x.q, options: e.options, answer: x.answer.trim(), why: x.why.trim() })
+      }
     }
   }
   const pattern: BankItem['level'][] = ['easy', 'medium', 'hard', 'medium']

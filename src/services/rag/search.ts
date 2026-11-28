@@ -169,6 +169,43 @@ export async function chunksByRef(refs: { bookId: string; i: number }[]): Promis
   return out
 }
 
+/** نص الإدخال للتضمين؛ ويطابقه scripts/build-vectors.mjs حرفاً بحرف */
+const inputOf = (c: Chunk) => `${c.lesson ?? c.chapter ?? ''}
+${c.text}`.trim().slice(0, 4000)
+
+/**
+ * متجهات الكتاب المحسوبة مسبقاً (ملف ثابت صغير يُخزَّن في المتصفح) بدل حسابها على كل جهاز.
+ * تُستعمل فقط إن طابقت بصمة كل مقطع نصه الحالي؛ وإلا يُكمل الحساب المباشر كما كان.
+ */
+async function staticVectors(bookId: string, chunks: Chunk[]): Promise<VectorRec | null> {
+  try {
+    const res = await fetch(new URL(`library/vec/${bookId}.bin`, document.baseURI).href)
+    if (!res.ok) return null
+    const buf = new Uint8Array(await res.arrayBuffer())
+    if (new TextDecoder().decode(buf.subarray(0, 5)) !== 'RVEC1') return null
+    const hl = new DataView(buf.buffer, buf.byteOffset + 5, 4).getUint32(0)
+    const head = JSON.parse(new TextDecoder().decode(buf.subarray(9, 9 + hl))) as { model: string; dims: number; n: number }
+    if (head.n !== chunks.length) return null
+    const hs = buf.subarray(9 + hl, 9 + hl + head.n * 8)
+    const enc = new TextEncoder()
+    for (let i = 0; i < chunks.length; i++) {
+      const h = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(inputOf(chunks[i])))).subarray(0, 8)
+      for (let k = 0; k < 8; k++) if (h[k] !== hs[i * 8 + k]) return null
+    }
+    const q = new Int8Array(buf.buffer, buf.byteOffset + 9 + hl + head.n * 8, head.n * head.dims)
+    const data = new Float32Array(q.length)
+    for (let i = 0; i < chunks.length; i++) {
+      let norm = 0
+      for (let d = 0; d < head.dims; d++) norm += q[i * head.dims + d] ** 2
+      norm = Math.sqrt(norm) || 1
+      for (let d = 0; d < head.dims; d++) data[i * head.dims + d] = q[i * head.dims + d] / norm
+    }
+    return { bookId, model: head.model, dims: head.dims, done: chunks.length, data }
+  } catch {
+    return null
+  }
+}
+
 /** يبني المتجهات تدريجياً ويكمل من حيث توقف. يحترم مدة الانتظار ولا يبدّل النموذج في منتصف الكتاب. */
 const embedding = new Set<string>()
 export async function buildVectors(bookId: string, signal: AbortSignal): Promise<void> {
@@ -179,6 +216,10 @@ export async function buildVectors(bookId: string, signal: AbortSignal): Promise
     await lock(async () => {
       const { chunks } = await index(bookId)
       let rec = await getVectors(bookId)
+      if (!rec?.done) {
+        const pre = await staticVectors(bookId, chunks)
+        if (pre) await putVectors((rec = pre))
+      }
       let waits = 0
       while (!signal.aborted && (rec?.done ?? 0) < chunks.length) {
         const from: number = rec?.done ?? 0
