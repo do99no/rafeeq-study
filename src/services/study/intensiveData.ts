@@ -18,7 +18,7 @@ const iso = (t: number) => new Date(t).toISOString().slice(0, 10)
  * - تُحفظ بدايتها الفعلية وخط الأساس في بياناته (تتزامن مع الخادم) عند أول حساب بعد فهرسة كل كتبه.
  * - مهام اليوم تُثبَّت مرة في اليوم، فلا تتغير كلما فُتحت الصفحة.
  */
-export function useIntensive(): { plan: IntensivePlan | null; todaySessions: Session[]; checked: string[]; doneKeys: Set<string> } {
+export function useIntensive(): { plan: IntensivePlan | null; preparing: boolean; todaySessions: Session[]; checked: string[]; doneKeys: Set<string> } {
   const data = useData()
   const docs = useDocs()
   const setup = useCurriculum()
@@ -74,7 +74,7 @@ export function useIntensive(): { plan: IntensivePlan | null; todaySessions: Ses
     }
     return done
   }, [todaySessions, progress])
-  return { plan, todaySessions: todaySessions as Session[], checked: saved?.today?.checked ?? [], doneKeys }
+  return { plan, preparing: setup.phase !== 'done' && setup.phase !== 'error', todaySessions: todaySessions as Session[], checked: saved?.today?.checked ?? [], doneKeys }
 }
 
 export function toggleChecked(key: string) {

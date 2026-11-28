@@ -19,11 +19,19 @@ const hours = (m: number) => {
 
 /** خطة إنهاء المنهج قبل الموعد: مساحة واحدة هادئة؛ مهمة اليوم الحالية بارزة، والتفاصيل عند الطلب */
 export function IntensivePlan() {
-  const { plan, todaySessions, checked, doneKeys } = useIntensive()
+  const { plan, preparing, todaySessions, checked, doneKeys } = useIntensive()
   useTracker()
   const [all, setAll] = useState(false)
   const [rest, setRest] = useState(false)
   if (!plan) return null
+  // لا أرقام جزئية قبل فهرسة المنهج كله
+  if (preparing)
+    return (
+      <section className="panel iplan" aria-busy="true">
+        <h2>خطة إنهاء المنهج</h2>
+        <p className="muted">يحسب رفيق حجم منهجك من كتبك… تظهر الخطة كاملة بعد قليل.</p>
+      </section>
+    )
   const isDone = (s: Session) => doneKeys.has(s.key) || checked.includes(s.key)
   const current = todaySessions.find((s) => !isDone(s))
   const doneMin = todaySessions.filter(isDone).reduce((n, s) => n + s.minutes, 0)
