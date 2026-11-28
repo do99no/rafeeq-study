@@ -3,6 +3,7 @@ import { CalendarDays, ChevronLeft, TriangleAlert } from 'lucide-react'
 import { num } from '../lib/format'
 import { buildPlan, type PlanItem } from '../lib/planner'
 import { lessonStates, usePlacement } from '../services/study/placement'
+import { useSubjectProgress } from '../services/study/progressData'
 import { focusOf, startStudy } from '../lib/study'
 import { useDocs } from '../services/books/process'
 import { usePlan } from '../services/server/session'
@@ -21,11 +22,18 @@ export function StudyPlan() {
   const [all, setAll] = useState(false)
   const placement = usePlacement()
   const states = useMemo(() => (placement?.results.length ? lessonStates(placement.results) : undefined), [placement])
+  // المواد التي تحتاج إلى اهتمام أكبر تأخذ نصيباً أكبر من الخطة
+  const { progress } = useSubjectProgress()
+  const need = useMemo(() => {
+    const started = progress.filter((p) => p.done || p.started)
+    const avg = started.length ? started.reduce((n, p) => n + p.coverage, 0) / started.length : 0
+    return new Map(progress.map((p) => [p.subject, (p.mastery !== null && p.mastery < 60) || p.openMistakes >= 2 || (started.length > 1 && p.coverage < avg - 20) ? 2 : 1]))
+  }, [progress])
   const plan = useMemo(() => {
     if (!examDate) return null
     const books = data.books.filter((b) => docs[b.id]?.sections.length)
-    return buildPlan({ books, sections: Object.fromEntries(books.map((b) => [b.id, docs[b.id].sections])), studied: data.studied, mistakes: data.mistakes, examDate, dailyMin, placement: states })
-  }, [examDate, dailyMin, data.books, data.studied, data.mistakes, docs, states])
+    return buildPlan({ books, sections: Object.fromEntries(books.map((b) => [b.id, docs[b.id].sections])), studied: data.studied, mistakes: data.mistakes, examDate, dailyMin, placement: states, need })
+  }, [examDate, dailyMin, data.books, data.studied, data.mistakes, docs, states, need])
 
   const open = (it: PlanItem) => {
     const s = docs[it.bookId]?.sections.find((x) => x.id === it.sectionId)

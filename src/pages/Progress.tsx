@@ -8,6 +8,9 @@ import { startStudy } from '../lib/study'
 import { Link } from '../router'
 import { actions, useData } from '../store/store'
 import type { Mistake } from '../types'
+import { SubjectProgressList } from '../components/SubjectProgress'
+import { nudges } from '../lib/progress'
+import { useSubjectProgress } from '../services/study/progressData'
 
 /** التقدم: ما درسه الطالب، ونتائجه، والموضوعات التي يخطئ فيها */
 export default function Progress() {
@@ -19,6 +22,26 @@ export default function Progress() {
   const avg = attempts.length ? Math.round((attempts.reduce((s, a) => s + a.score / a.total, 0) / attempts.length) * 100) : 0
   const title = (id: string) => outputs.find((o) => o.id === id)?.title ?? 'اختبار محذوف'
   const bookTitle = (id: string) => books.find((b) => b.id === id)?.title ?? ''
+  const { progress, ready } = useSubjectProgress()
+  const notes = nudges(progress, { dueCards: cards.filter((c) => isDue(c)).length, ready: ready.size ? ready : undefined, num })
+  const goNext = (p: (typeof progress)[number]) => p.next && startStudy(p.next.bookId, { bookId: p.next.bookId, from: p.next.from, to: p.next.to, title: p.next.title, sectionId: p.next.sectionId })
+  const subjectsPanel = (
+    <section className="panel" aria-labelledby="sp-h">
+      <h2 id="sp-h">تقدمي في المواد</h2>
+      <p className="muted">النسبة: ما درسته من المنهج. الإتقان: صحة إجاباتك في أسئلة الفهم والاختبارات (يظهر بعد ٥ إجابات).</p>
+      {notes.length > 0 && (
+        <ul className="nudges">
+          {notes.slice(0, 4).map((n, i) => (
+            <li key={i} data-kind={n.kind}>
+              <span className="grow">{n.text}</span>
+              {n.action && <button className="btn btn-sm" onClick={() => startStudy(n.action!.bookId, { bookId: n.action!.bookId, from: n.action!.from, to: n.action!.to, title: n.action!.title, sectionId: n.action!.sectionId })}>ابدأ</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <SubjectProgressList items={progress} onNext={goNext} />
+    </section>
+  )
 
   if (!lessons.length && !attempts.length && !mistakes.length && !cards.length)
     return (
@@ -26,6 +49,7 @@ export default function Progress() {
         <header className="page-head">
           <h1>التقدم</h1>
         </header>
+        {progress.length > 0 && subjectsPanel}
         <EmptyState icon={ChartNoAxesColumn} title="لم تبدأ بعد" text="ادرس درساً أو حلّ اختباراً، وسيظهر هنا ما أتقنته وما يحتاج إلى مراجعة.">
           <Link to="/" className="btn btn-primary">
             ابدأ الدراسة
@@ -39,6 +63,9 @@ export default function Progress() {
       <header className="page-head">
         <h1>التقدم</h1>
       </header>
+      {subjectsPanel}
+      <details className="home-more">
+        <summary>الإحصاءات والدروس والاختبارات</summary>
       <ul className="stats">
         <li>
           <strong>{num(lessons.length)}</strong>
@@ -140,6 +167,7 @@ export default function Progress() {
           </ul>
         </section>
       )}
+      </details>
     </div>
   )
 }

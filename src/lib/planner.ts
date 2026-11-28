@@ -52,6 +52,8 @@ export function buildPlan(input: {
   today?: number
   /** نتيجة تحديد المستوى لكل درس اختُبر فيه (bookId:sectionId) */
   placement?: Map<string, { ok: boolean; level: string; basics: boolean }>
+  /** حاجة كل مادة (١ عادية، ٢ تحتاج إلى اهتمام أكبر) من لوحة التقدم */
+  need?: Map<string, number>
 }): StudyPlan {
   const today = input.today ?? Date.now()
   const exam = new Date(`${input.examDate}T00:00:00`).getTime()
@@ -86,8 +88,9 @@ export function buildPlan(input: {
 
   // تبادل المواد يوماً بيوم (درس من كل مادة بالدور)، بحد الدقائق اليومية
   const order: PlanItem[] = []
-  const lists = [...queues.values()]
-  for (let i = 0; lists.some((l) => l.length > i); i++) for (const l of lists) if (l[i]) order.push(l[i])
+  // المادة التي تحتاج إلى اهتمام أكبر (إتقان منخفض أو أخطاء أو تغطية متأخرة) تأخذ درسين في كل دورة بدل درس
+  const lists = [...queues.entries()].map(([subject, q]) => ({ q, w: Math.max(1, Math.min(2, input.need?.get(subject) ?? 1)), i: 0 }))
+  while (lists.some((l) => l.i < l.q.length)) for (const l of lists) for (let k = 0; k < l.w && l.i < l.q.length; k++) order.push(l.q[l.i++])
   const remainingMin = order.reduce((s, x) => s + x.minutes, 0)
   const perDay = Math.max(input.dailyMin, Math.ceil(remainingMin / learnDays))
   const days: PlanDay[] = []

@@ -1,5 +1,7 @@
 import { ArrowLeft, Layers, PlayCircle, Target } from 'lucide-react'
 import { needsPlacement, usePlacement } from '../services/study/placement'
+import { useSubjectProgress } from '../services/study/progressData'
+import { nudges } from '../lib/progress'
 import { isDue, normalCards } from '../components/outputs/CardsView'
 import { ago, booksCount, lessonsCount, num } from '../lib/format'
 import { setupCurriculum, useCurriculum } from '../services/books/curriculum'
@@ -27,6 +29,9 @@ export function Home() {
   const due = outputs.reduce((n, o) => n + (o.data.kind === 'cards' ? normalCards(o.data.cards, o.data.known).filter((c) => isDue(c)).length : 0), 0)
   const hour = new Date().getHours()
   const placement = usePlacement()
+  const { progress, ready } = useSubjectProgress()
+  // تذكير أو اثنان فقط، عند الحاجة
+  const notes = nudges(progress, { dueCards: due, ready: ready.size ? ready : undefined, num }).filter((n) => n.kind !== 'review').slice(0, 2)
 
   return (
     <div className="page">
@@ -57,6 +62,16 @@ export function Home() {
           <ArrowLeft aria-hidden="true" />
         </button>
       ) : null}
+      {notes.length > 0 && !needsPlacement(placement) && (
+        <ul className="nudges nudges-home">
+          {notes.map((n, i) => (
+            <li key={i} data-kind={n.kind}>
+              <span className="grow">{n.text}</span>
+              {n.action && <button className="btn btn-sm" onClick={() => startStudy(n.action!.bookId, { bookId: n.action!.bookId, from: n.action!.from, to: n.action!.to, title: n.action!.title, sectionId: n.action!.sectionId })}>ابدأ</button>}
+            </li>
+          ))}
+        </ul>
+      )}
       <StudyPlan />
       <section aria-labelledby="subj-h">
         <div className="section-head">
@@ -80,7 +95,7 @@ export function Home() {
               const nbBooks = n.bookIds.filter((id) => isSearchable(docs[id]))
               const lessons = nbBooks.flatMap((id) => (docs[id]?.sections ?? []).map((sec) => ({ id, sec })))
               const readyN = lessons.filter((x) => packOf(x.id, x.sec.id)).length
-              const doneN = Object.values(studied).filter((x) => nbBooks.includes(x.bookId) && (x.explained || x.taught || x.checks)).length
+              const sp = progress.find((x) => x.subject === n.subject)
               return (
                 <Link key={n.id} to={`/notebooks/${n.id}`} className="subject-card" data-hue={n.hue}>
                   <span className="spine" aria-hidden="true" />
@@ -88,10 +103,14 @@ export function Home() {
                   <small className="muted">
                     {booksCount(nbBooks.length)}، {lessonsCount(lessons.length)}
                   </small>
-                  <small className="muted">
-                    {readyN ? `محتوى جاهز: ${lessonsCount(readyN)}` : 'المحتوى الجاهز قيد الإعداد'}
-                    {doneN ? `، درست ${lessonsCount(doneN)}` : ''}
-                  </small>
+                  {sp && (sp.done || sp.started) ? (
+                    <>
+                      <span className="sp-bar sp-bar-sm" aria-hidden="true"><span style={{ width: `${sp.coverage}%` }} /></span>
+                      <small className="muted">{num(sp.coverage)}٪ · {sp.mastery === null ? sp.masteryLabel : `الإتقان ${num(sp.mastery)}٪`}</small>
+                    </>
+                  ) : (
+                    <small className="muted">{readyN ? 'لم تبدأها بعد' : 'المحتوى الجاهز قيد الإعداد'}</small>
+                  )}
                 </Link>
               )
             })}
