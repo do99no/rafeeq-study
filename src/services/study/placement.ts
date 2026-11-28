@@ -1,6 +1,6 @@
 import { overlap, tokens } from '../../lib/arabic'
 import { ERRATA } from '../../data/errata'
-import { PLACEMENT_REVIEW } from '../../data/placementReview'
+import { PLACEMENT_REVIEW, type Fix } from '../../data/placementReview'
 import type { Section } from '../books/types'
 import { api } from '../server/account'
 import type { LessonPack, PackInfo } from './lessonPack'
@@ -85,7 +85,7 @@ export const PLAN_OF: Record<string, { n: number; minutes: number }> = {
   الكيمياء: { n: 20, minutes: 35 },
   الأحياء: { n: 20, minutes: 25 },
   'العلوم الهندسية': { n: 20, minutes: 40 },
-  'اللغة العربية': { n: 20, minutes: 25 },
+  'اللغة العربية': { n: 24, minutes: 30 },
   'اللغة الإنجليزية': { n: 20, minutes: 25 },
   'التربية الإسلامية': { n: 16, minutes: 20 },
 }
@@ -161,15 +161,23 @@ export function analyze(r: SubjectResult): SubjectAnalysis {
 }
 
 /** للخطة: حالة كل درس اختُبر فيه الطالب (المفتاح bookId:sectionId) */
+/**
+ * حالة كل درس من نتيجة تحديد المستوى. «strong» (يكفيه ٤٠٪ من وقته في الخطة) لا تُمنح بإجابة واحدة:
+ * كل إجابات الدرس صحيحة، ومعها دليلان على الأقل (إجابتان صحيحتان في الدرس نفسه، أو وحدته كلها صحيحة في سؤالين أو أكثر)،
+ * ومستوى المادة ليس «تأسيس».
+ */
 export function lessonStates(results: SubjectResult[]) {
-  const m = new Map<string, { ok: boolean; level: string; basics: boolean }>()
+  const m = new Map<string, { ok: boolean; level: string; basics: boolean; strong: boolean; n: number }>()
   for (const r of results) {
     const a = analyze(r)
     for (const u of a.units)
       for (const l of u.lessons) {
         const k = `${l.bookId}:${l.sectionId}`
         const prev = m.get(k)
-        m.set(k, { ok: (prev?.ok ?? true) && l.ok, level: l.level, basics: u.basics })
+        const n = (prev?.n ?? 0) + 1
+        const ok = (prev?.ok ?? true) && l.ok
+        const unitAll = u.total >= 2 && u.correct === u.total
+        m.set(k, { ok, level: l.level, basics: u.basics, n, strong: ok && a.level !== 'تأسيس' && (n >= 2 || unitAll) })
       }
   }
   return m
@@ -313,8 +321,11 @@ export function buildBank(subject: string, books: BankBook[], info: (b: string, 
   const problemy = subject === MATH || SCIENCE.has(subject)
   // الدروس التمهيدية والتاريخية لا تقيس المستوى: تُستبعد
   for (const slot of slots) slot.lessons = slot.lessons.filter((l) => !INTRO.test(l.s.title))
-  const live = slots.filter((s) => s.lessons.some((l) => l.pool.length))
-  const rank = (x: BankItem, level: BankItem['level']) => (x.level === level ? 0 : 3) + (problemy && !/[0-9٠-٩]/.test(x.q + x.answer) ? 2 : 0) + (x.type === 'tf' ? 1 : 0)
+  // المواضع بالتناوب بين الكتب (لا يستنفد الكتاب الأول كل الأسئلة في مادة متعددة الكتب كالعربية)
+  const perBook = books.map((b) => slots.filter((s) => s.lessons[0]?.book.id === b.id && s.lessons.some((l) => l.pool.length)))
+  const live: Slot[] = []
+  for (let i = 0; perBook.some((x) => i < x.length); i++) for (const x of perBook) if (x[i]) live.push(x[i])
+  const rank = (x: BankItem, level: BankItem['level']) => (approved.has(x.id) ? -10 : 0) + (x.level === level ? 0 : 3) + (problemy && !/[0-9٠-٩]/.test(x.q + x.answer) ? 2 : 0) + (x.type === 'tf' ? 1 : 0)
   // المواضع: بالدور على الوحدات، وفي كل وحدة درس مختلف كل مرة موزع على امتداد الوحدة
   type Plan = { level: BankItem['level']; options: BankItem[] }
   const plans: Plan[] = []
@@ -348,7 +359,7 @@ export function buildBank(subject: string, books: BankBook[], info: (b: string, 
   const candidates: BankItem[] = []
   for (const p of plans) {
     const ok = p.options.find((x) => approved.has(x.id))
-    if (ok) chosen.push(ok)
+    if (ok) chosen.push(applyFix(ok, rev.fixes?.[ok.id]))
     candidates.push(...p.options)
   }
   // ترتيب العرض: بترتيب المنهج (الكتاب ثم الدرس)، ليكون أول خطأ أقدم درس يحتاجه الطالب
@@ -359,12 +370,23 @@ export function buildBank(subject: string, books: BankBook[], info: (b: string, 
   chosen.sort((a, b) => pos(a) - pos(b))
   const units = slots.filter((s) => s.lessons.length).length
   const covered = new Set(chosen.map((x) => `${x.bookId}:${x.unit}`)).size
+  // التغطية المطلوبة على قدر عدد الأسئلة: لا يُطلب ٨٠٪ من ٤٥ وحدة بعشرين سؤالاً، لكن كل كتاب يجب أن يُمثَّل
+  const needUnits = Math.ceil(Math.min(units, plan.n) * 0.8)
+  const missingBooks = books.filter((b) => slots.some((s) => s.lessons[0]?.book.id === b.id && s.lessons.length) && !chosen.some((x) => x.bookId === b.id))
   const blockers: string[] = []
   if (readyLessons < totalLessons * 0.9) blockers.push(`الدروس الجاهزة ${readyLessons} من ${totalLessons}: يلزم ٩٠٪ على الأقل كي يغطي الاختبار المنهج`)
-  if (covered < Math.ceil(units * 0.8)) blockers.push(`الأسئلة تغطي ${covered} من ${units} وحدة: يلزم ٨٠٪ على الأقل`)
+  if (covered < needUnits) blockers.push(`الأسئلة تغطي ${covered} من ${units} وحدة: يلزم ${needUnits} على الأقل`)
+  if (missingBooks.length) blockers.push(`لا أسئلة معتمدة من: ${missingBooks.map((b) => b.title).join('، ')}`)
   if (chosen.length < Math.min(plan.n, 12)) blockers.push(`الأسئلة المعتمدة ${chosen.length}، والمطلوب ${plan.n}`)
   const unreviewed = plans.filter((p) => !p.options.some((x) => approved.has(x.id))).reduce((n, p) => n + p.options.filter((c) => !rev.rejected[c.id]).length, 0)
   return { subject, items: chosen, candidates, minutes: plan.minutes, coverage: { units, covered, lessons: new Set(chosen.map((x) => x.sectionId + x.bookId)).size, readyLessons, totalLessons }, blockers, unreviewed }
+}
+
+/** تصحيح لغوي بعد المراجعة لا يغيّر المعرّف (فلا يلغي الاعتماد): نص السؤال، أو خيار بعينه، أو التفسير */
+function applyFix(x: BankItem, fix?: Fix): BankItem {
+  if (!fix) return x
+  const opt = (o: string) => fix.options?.[o] ?? o
+  return { ...x, q: fix.q ?? x.q, options: x.options.map(opt), answer: opt(x.answer), why: fix.why ?? x.why }
 }
 
 export const publishBank = (b: BankBuild, publish: boolean) =>

@@ -42,7 +42,7 @@ export function useIntensive(): { plan: IntensivePlan | null; preparing: boolean
     const lessons: ILesson[] = progress.flatMap((p) =>
       p.lessons.map((l) => {
         const k = known?.get(`${l.bookId}:${l.sectionId}`)
-        return { subject: p.subject, bookId: l.bookId, sectionId: l.sectionId, title: l.title, page: l.page, endPage: l.endPage, unit: unitOf.get(`${l.bookId}:${l.sectionId}`) || undefined, state: l.state, credit: l.credit, known: !!k?.ok && k.level !== 'easy', ready: ready.has(`${l.bookId}:${l.sectionId}`), lastAt: l.lastAt }
+        return { subject: p.subject, bookId: l.bookId, sectionId: l.sectionId, title: l.title, page: l.page, endPage: l.endPage, unit: unitOf.get(`${l.bookId}:${l.sectionId}`) || undefined, state: l.state, credit: l.credit, known: !!k?.strong, ready: ready.has(`${l.bookId}:${l.sectionId}`), lastAt: l.lastAt }
       }),
     )
     const weak = new Set(progress.filter((p) => (p.mastery !== null && p.mastery < 60) || p.openMistakes >= 2).map((p) => p.subject))
