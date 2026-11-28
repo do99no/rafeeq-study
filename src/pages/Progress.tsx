@@ -10,11 +10,13 @@ import { actions, useData } from '../store/store'
 import type { Mistake } from '../types'
 import { SubjectProgressList } from '../components/SubjectProgress'
 import { nudges } from '../lib/progress'
+import { usePlan } from '../services/server/session'
 import { useSubjectProgress } from '../services/study/progressData'
 
 /** التقدم: ما درسه الطالب، ونتائجه، والموضوعات التي يخطئ فيها */
 export default function Progress() {
-  const { studied, mistakes, attempts, outputs, books } = useData()
+  const { studied, mistakes, attempts, outputs, books, settings } = useData()
+  const adminPlan = usePlan()
   const lessons = Object.values(studied).sort((a, b) => b.at - a.at)
   const open = mistakes.filter((m) => !m.resolved)
   const byTopic = [...open.reduce((m, x) => m.set(`${x.bookId}|${x.topic}`, [...(m.get(`${x.bookId}|${x.topic}`) ?? []), x]), new Map<string, Mistake[]>()).values()].sort((a, b) => b.length - a.length)
@@ -23,7 +25,8 @@ export default function Progress() {
   const title = (id: string) => outputs.find((o) => o.id === id)?.title ?? 'اختبار محذوف'
   const bookTitle = (id: string) => books.find((b) => b.id === id)?.title ?? ''
   const { progress, ready } = useSubjectProgress()
-  const notes = nudges(progress, { dueCards: cards.filter((c) => isDue(c)).length, ready: ready.size ? ready : undefined, num })
+  const examDate = adminPlan?.plan?.examDate || settings.examDate
+  const notes = nudges(progress, { dueCards: cards.filter((c) => isDue(c)).length, ready: ready.size ? ready : undefined, num, examAt: examDate ? Date.parse(examDate + 'T00:00:00') : undefined })
   const goNext = (p: (typeof progress)[number]) => p.next && startStudy(p.next.bookId, { bookId: p.next.bookId, from: p.next.from, to: p.next.to, title: p.next.title, sectionId: p.next.sectionId })
   const subjectsPanel = (
     <section className="panel" aria-labelledby="sp-h">

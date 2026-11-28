@@ -2,6 +2,7 @@ import { ArrowLeft, Layers, PlayCircle, Target } from 'lucide-react'
 import { needsPlacement, usePlacement } from '../services/study/placement'
 import { useSubjectProgress } from '../services/study/progressData'
 import { nudges } from '../lib/progress'
+import { usePlan } from '../services/server/session'
 import { isDue, normalCards } from '../components/outputs/CardsView'
 import { ago, booksCount, lessonsCount, num } from '../lib/format'
 import { setupCurriculum, useCurriculum } from '../services/books/curriculum'
@@ -29,9 +30,11 @@ export function Home() {
   const due = outputs.reduce((n, o) => n + (o.data.kind === 'cards' ? normalCards(o.data.cards, o.data.known).filter((c) => isDue(c)).length : 0), 0)
   const hour = new Date().getHours()
   const placement = usePlacement()
+  const adminPlan = usePlan()
   const { progress, ready } = useSubjectProgress()
   // تذكير أو اثنان فقط، عند الحاجة
-  const notes = nudges(progress, { dueCards: due, ready: ready.size ? ready : undefined, num }).filter((n) => n.kind !== 'review').slice(0, 2)
+  const examDate = adminPlan?.plan?.examDate || data.settings.examDate
+  const notes = nudges(progress, { dueCards: due, ready: ready.size ? ready : undefined, num, examAt: examDate ? Date.parse(examDate + 'T00:00:00') : undefined }).filter((n) => n.kind !== 'review').slice(0, 2)
 
   return (
     <div className="page">

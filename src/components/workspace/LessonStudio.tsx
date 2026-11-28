@@ -1,6 +1,7 @@
 import { Shuffle, BookOpenCheck, CircleHelp, ClipboardList, FileText, Layers, ListChecks, Moon, Network, Sparkles, Target, TriangleAlert, Zap, type LucideIcon } from 'lucide-react'
 import { num } from '../../lib/format'
-import { hasTool, PACK_TOOLS, packOf, toolData, usePacks, type LessonPack, type PackTool } from '../../services/study/lessonPack'
+import { hasTool, PACK_TOOLS, packOf, toolData, unitOf, unitTools, usePacks, type LessonPack, type PackTool } from '../../services/study/lessonPack'
+import { useDocs } from '../../services/books/process'
 import { getState } from '../../store/store'
 import type { Focus, Notebook, StudyOutput } from '../../types'
 import { ToolsPanel } from './ToolsPanel'
@@ -32,10 +33,16 @@ interface Props {
   onPack: (p: LessonPack, t: PackTool) => void
   onTool: (k: ToolKind) => void
   onOpen: (o: StudyOutput) => void
+  /** يعرض محتوى جاهزاً دون حفظه (أدوات الوحدة) */
+  onShow?: (o: StudyOutput, prepared: string) => void
 }
 
-export function LessonStudio({ notebook, focus, activeIds, onPack, onTool, onOpen }: Props) {
+export function LessonStudio({ notebook, focus, activeIds, onPack, onTool, onOpen, onShow }: Props) {
   usePacks()
+  const docs = useDocs()
+  const unit = focus?.sectionId ? unitOf(docs[focus.bookId]?.sections ?? [], focus.sectionId) : null
+  const ut = unit && focus ? unitTools(focus.bookId, unit) : null
+  const show = (kind: string, title: string, data: StudyOutput['data']) => onShow?.({ id: `unit-${focus!.bookId}-${unit!.title}-${kind}`, notebookId: notebook.id, title, createdAt: Date.now(), data }, `من المحتوى الجاهز لـ${num(ut!.ready)} من ${num(ut!.total)} درساً في الوحدة، وكل جملة بمصدرها.`)
   const p = focus ? packOf(focus.bookId, focus.sectionId) : undefined
   const tools = p ? PACK_TOOLS.filter((t) => hasTool(p, t.id)) : []
   return (
@@ -67,6 +74,16 @@ export function LessonStudio({ notebook, focus, activeIds, onPack, onTool, onOpe
               </div>
             </section>
           ))}
+          {ut && onShow && (
+            <section aria-label="الوحدة كلها">
+              <h3 className="ws-sub">الوحدة كلها: {unit!.title}</h3>
+              <div className="tools">
+                <button className="tool" onClick={() => show('summary', `ملخص الوحدة: ${unit!.title}`, ut.summary)}><FileText aria-hidden="true" /><span>ملخص الوحدة</span><small className="muted">{num(ut.ready)} دروس</small></button>
+                <button className="tool" onClick={() => show('final', `مراجعة الوحدة قبل الامتحان: ${unit!.title}`, ut.final)}><Moon aria-hidden="true" /><span>مراجعة الوحدة قبل الامتحان</span></button>
+                <button className="tool" onClick={() => show('map', `خريطة الوحدة: ${unit!.title}`, ut.map)}><Network aria-hidden="true" /><span>خريطة الوحدة</span></button>
+              </div>
+            </section>
+          )}
           {p.unseen.length > 0 && <p className="hint">لم يطّلع رفيق على الصفحات {p.unseen.map((x) => num(x)).join('، ')} عند التجهيز؛ راجعها في الكتاب.</p>}
         </>
       )}

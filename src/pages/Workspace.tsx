@@ -109,6 +109,7 @@ export default function Workspace({ id }: { id: string }) {
       activeIds={activeIds}
       onTool={(t) => (setToolsOpen(false), setTool(t))}
       onOpen={(o) => (setToolsOpen(false), setOutputId(o.id))}
+      onShow={(output, prepared) => (setToolsOpen(false), setShown({ output, prepared }))}
       onPack={openPack}
     />
   )

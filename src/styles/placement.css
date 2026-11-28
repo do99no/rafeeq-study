@@ -141,3 +141,4 @@
 .sp-actions .text-link { background: none; border: 0; padding: 0.2rem 0; font: inherit; color: var(--brand-ink); cursor: pointer; }
 .sp-actions .sp-next { font-weight: 600; text-align: start; }
 .sp-actions > .text-link:last-child { color: var(--ink-2); font-weight: 400; margin-inline-start: auto; }
+.purpose-sheets { display: grid; gap: 0.35rem; margin: 0.5rem 0 0.75rem; }

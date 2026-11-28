@@ -15,13 +15,15 @@ const NAMES: Record<string, string> = { mohamed: 'محمد', amna: 'أمنة' }
 type Cat = { id: string; title: string; subject: string; sections: Section[] }[]
 
 /** تقدم طالب كما يراه المسؤول: من نسخة بياناته في الخادم، بالحساب نفسه الذي يراه الطالب */
-async function loadStudent(id: string, cat: Cat, ready: Set<string>): Promise<{ progress: SubjectProgress[]; syncedAt?: number }> {
+async function loadStudent(id: string, cat: Cat, ready: Set<string>): Promise<{ progress: SubjectProgress[]; syncedAt?: number; examAt?: number }> {
   const r = await api<{ docs: { key: string; json: string; updated: number }[] }>(`/admin/data/${id}`)
   const core = r.docs.find((d) => d.key === 'core')
   const data = core ? JSON.parse(core.json) : {}
   const placement = await adminPlacementResults(id).then((x) => x.results).catch(() => [])
   const input = progressInput(cat, (b) => cat.find((c) => c.id === b)?.sections, { studied: data.studied ?? {}, attempts: data.attempts ?? [], outputs: data.outputs ?? [], mistakes: data.mistakes ?? [] }, placement, ready, id)
-  return { progress: computeProgress(input), syncedAt: core?.updated }
+  const plan = await api<{ plan?: { examDate?: string } }>(`/admin/student/${id}`).then((x) => x.plan).catch(() => undefined)
+  const exam = plan?.examDate || data.settings?.examDate
+  return { progress: computeProgress(input), syncedAt: core?.updated, examAt: exam ? Date.parse(exam + 'T00:00:00') : undefined }
 }
 let catCache: Promise<{ cat: Cat; ready: Set<string> }> | undefined
 const loadShared = () =>
@@ -39,14 +41,14 @@ const overall = (p: SubjectProgress[]) => {
 
 /** لوحة المسؤول: الطالبان معاً (مقارنة إدارية للمتابعة فقط، لا تظهر لأي طالب)، ثم تفاصيل كل طالب */
 export function AdminProgress() {
-  const [state, setState] = useState<Record<string, { progress: SubjectProgress[]; syncedAt?: number }> | null>(null)
+  const [state, setState] = useState<Record<string, { progress: SubjectProgress[]; syncedAt?: number; examAt?: number }> | null>(null)
   const [error, setError] = useState('')
   const [tab, setTab] = useState('mohamed')
   useEffect(() => {
     void (async () => {
       try {
         const { cat, ready } = await loadShared()
-        const out: Record<string, { progress: SubjectProgress[]; syncedAt?: number }> = {}
+        const out: Record<string, { progress: SubjectProgress[]; syncedAt?: number; examAt?: number }> = {}
         for (const id of ['mohamed', 'amna']) out[id] = await loadStudent(id, cat, ready).catch(() => ({ progress: [] }))
         setState(out)
       } catch {
@@ -63,7 +65,7 @@ export function AdminProgress() {
     return <td>{p.done || p.started ? `${num(p.coverage)}٪` : 'لم يبدأ'}<small className="muted">{p.mastery !== null ? ` · إتقان ${num(p.mastery)}٪` : ''}</small></td>
   }
   const cur = state[tab]
-  const alerts = cur ? nudges(cur.progress, { num }).filter((n) => n.kind !== 'praise') : []
+  const alerts = cur ? nudges(cur.progress, { num, examAt: cur.examAt }).filter((n) => n.kind !== 'praise') : []
   return (
     <div className="page">
       <Link to="/admin" className="text-link back-link">لوحة المتابعة</Link>

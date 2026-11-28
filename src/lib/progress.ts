@@ -197,7 +197,21 @@ export interface Nudge {
   priority: number
 }
 const DAY = 86400_000
-export function nudges(progress: SubjectProgress[], o: { now?: number; dueCards?: number; behind?: boolean; ready?: Set<string>; num?: (n: number) => string } = {}): Nudge[] {
+/**
+ * التأخر في مادة بعينها: الدروس المكتملة في آخر ١٤ يوماً مقارنة بالوتيرة اللازمة لإنهاء المادة قبل الامتحان.
+ * يُعد متأخراً إن كانت وتيرته أقل من ٦٠٪ من اللازم، بعد أسبوع على الأقل من بدء الدراسة.
+ */
+export function subjectPace(p: SubjectProgress, examAt: number, now = Date.now()) {
+  const weeksLeft = Math.max(1 / 7, (examAt - now) / (7 * DAY))
+  const remaining = p.total - p.done
+  const needed = remaining / weeksLeft
+  const recent = p.lessons.filter((l) => l.state === 'done' && (l.lastAt ?? 0) >= now - 14 * DAY).length / 2
+  const firstAt = Math.min(...p.lessons.map((l) => l.lastAt ?? Infinity))
+  const active = Number.isFinite(firstAt) && now - firstAt >= 7 * DAY
+  return { needed, recent, behind: active && remaining > 0 && recent < needed * 0.6 }
+}
+
+export function nudges(progress: SubjectProgress[], o: { now?: number; dueCards?: number; behind?: boolean; ready?: Set<string>; num?: (n: number) => string; examAt?: number } = {}): Nudge[] {
   const now = o.now ?? Date.now()
   const N = o.num ?? String
   const out: Nudge[] = []
@@ -216,7 +230,10 @@ export function nudges(progress: SubjectProgress[], o: { now?: number; dueCards?
       out.push({ kind: 'not-started', subject: p.subject, priority: 60, action: p.next, text: `لم تبدأ ${p.subject} بعد. ابدأ بـ«${p.next.title}»، فهو قصير ومناسب للبداية.` })
     else if (p.mastery !== null && p.mastery < 50 && p.next)
       out.push({ kind: 'weak', subject: p.subject, priority: 70, action: p.next, text: `${p.subject} تحتاج إلى تدريب أكثر. خصّص اليوم جلسة قصيرة لـ«${p.next.title}».` })
-    else if (p.started > 0 && p.next && p.next.why === 'بدأته ولم تكمله')
+    else if (o.examAt && p.next && subjectPace(p, o.examAt, now).behind) {
+      const need = Math.ceil(subjectPace(p, o.examAt, now).needed)
+      out.push({ kind: 'behind', subject: p.subject, priority: 72, action: p.next, text: `تقدمك في ${p.subject} أبطأ من خطتك: تحتاج إلى نحو ${N(need)} ${need > 2 ? 'دروس' : 'درس'} أسبوعياً. خصصنا لك جلسة قصيرة لاستدراك ما فاتك، ابدأ بـ«${p.next.title}».` })
+    } else if (p.started > 0 && p.next && p.next.why === 'بدأته ولم تكمله')
       out.push({ kind: 'resume', subject: p.subject, priority: 50, action: p.next, text: `بدأت «${p.next.title}» في ${p.subject} ولم تكمله. أكمله الآن من حيث توقفت.` })
     if (p.mastery !== null && p.mastery >= 80 && p.answered >= 10)
       out.push({ kind: 'praise', subject: p.subject, priority: 20, text: `أحسنت في ${p.subject}! حافظ على مستواك بمراجعة سريعة.` })

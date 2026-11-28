@@ -182,6 +182,18 @@ function WorksheetsTab({ run }: { run: (o: QuizOutput) => void }) {
   const [rb, setRb] = useState('')
   const rbook = rb || readyBooks[0]?.[0] || ''
   const groups = [...ready.filter((r) => r.bookId === rbook).reduce((m, r) => m.set(r.unit || r.lesson, [...(m.get(r.unit || r.lesson) ?? []), r]), new Map<string, typeof ready>())]
+  // أوراق حسب الغرض: من كل الأسئلة الجاهزة غير الموسومة «تحتاج مراجعة» في الكتاب المختار، بلا ذكاء اصطناعي
+  const allReady = useReadyQuestions().filter((r) => r.bookId === rbook && !r.q.flag)
+  const byUnit = (list: typeof allReady) => [...list.reduce((m, r) => m.set(r.unit || r.lesson, [...(m.get(r.unit || r.lesson) ?? []), r]), new Map<string, typeof allReady>()).values()]
+  const weakSet = new Set(weak.filter((m) => m.bookId === rbook).map((m) => lessonOf(m.bookId, m.page)?.title).filter((x): x is string => !!x))
+  const seenQ = new Set(weak.map((m) => normalize(m.q)))
+  const purpose: { label: string; hint: string; list: typeof allReady }[] = [
+    { label: 'تأسيسية', hint: 'أسئلة سهلة تبني الأساس', list: spread(byUnit(allReady.filter((r) => r.level === 'easy')), 12) },
+    { label: 'تدريب وتطبيق', hint: 'أسئلة متوسطة', list: spread(byUnit(allReady.filter((r) => r.level === 'medium')), 12) },
+    { label: 'متقدمة وإثرائية', hint: 'أسئلة صعبة', list: spread(byUnit(allReady.filter((r) => r.level === 'hard')), 10) },
+    { label: 'علاجية', hint: 'أسئلة جديدة من دروس أخطائي', list: spread(byUnit(allReady.filter((r) => weakSet.has(r.lesson) && !seenQ.has(normalize(r.q.q)))), 10) },
+    { label: 'استعداد للشهادة', hint: 'من كل وحدات الكتاب بكل المستويات', list: spread(byUnit(allReady), 25) },
+  ].filter((x) => x.list.length >= 4)
   const openSheet = (title: string, list: typeof ready) =>
     run(save(title, list[0].bookId, list.map((r) => r.q), { mode: 'worksheet', subject: list[0].subject, minutes: list.length * 3, estimated: true, marks: list.length, lessons: [...new Set(list.map((r) => r.lesson))] }))
   return (
@@ -200,6 +212,18 @@ function WorksheetsTab({ run }: { run: (o: QuizOutput) => void }) {
               ))}
             </select>
           </label>
+          {purpose.length > 0 && (
+            <div className="purpose-sheets">
+              <span className="muted">حسب الغرض:</span>
+              <div className="chips">
+                {purpose.map((x) => (
+                  <button key={x.label} className="chip" title={x.hint} onClick={() => openSheet(`ورقة ${x.label}: ${readyBooks.find(([id]) => id === rbook)?.[1] ?? ''}`, x.list)}>
+                    {x.label} <small className="muted">{num(x.list.length)}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <ul className="ready-sheets">
             {groups.map(([unitName, list]) => {
               const byLesson = [...new Map(list.map((r) => [r.lesson, list.filter((x) => x.lesson === r.lesson)])).entries()]

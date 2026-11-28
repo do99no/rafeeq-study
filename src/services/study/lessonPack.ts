@@ -319,3 +319,47 @@ export function reviewPack(p: LessonPack, verified: PackReview['verified'] = p.r
   return { missing, issues: [...new Set(issues)], flagged, verified, at: Date.now() }
 }
 export const packOk = (r?: PackReview) => !!r && !r.missing.length && !r.issues.length
+
+// ===== أدوات الوحدة: تُبنى من حزم دروسها الجاهزة فقط (بلا ذكاء اصطناعي)، وكل جملة بمصدرها =====
+/** دروس الوحدة التي فيها الدرس المختار (أقرب عنوان من المستوى الأول قبله، حتى العنوان التالي) */
+export function unitOf(sections: { id: string; title: string; level: 1 | 2; page: number; endPage: number }[], sectionId?: string) {
+  const i = sections.findIndex((s) => s.id === sectionId)
+  if (i < 0) return null
+  let start = i
+  while (start >= 0 && sections[start].level !== 1) start--
+  if (start < 0 || !sections.slice(start + 1).some((s) => s.level === 2)) return null
+  const end = sections.findIndex((s, k) => k > start && s.level === 1)
+  const lessons = sections.slice(start + 1, end < 0 ? undefined : end).filter((s) => s.level === 2)
+  return lessons.length > 1 ? { title: sections[start].title, lessons } : null
+}
+/** نص من عدة حزم: أرقام الاستشهاد تُعاد ترقيمها كي لا تتداخل مصادر الدروس */
+function merged(parts: { p: LessonPack; text: string; heading: string }[]): { text: string; citations: Citation[] } {
+  const out: string[] = []
+  const citations: Citation[] = []
+  for (const { p, text, heading } of parts) {
+    const c = textWithCites(p, text)
+    const map = new Map<number, number>()
+    for (const x of c.citations) {
+      const n = citations.length + 1
+      map.set(x.n, n)
+      citations.push({ ...x, n })
+    }
+    out.push(`### ${heading}\n${c.text.replace(/\[(\d+)\]/g, (_m, n) => (map.has(Number(n)) ? `[${map.get(Number(n))}]` : ''))}`)
+  }
+  return { text: out.join('\n\n'), citations }
+}
+export function unitTools(bookId: string, unit: { title: string; lessons: { id: string; title: string }[] }) {
+  const packs = unit.lessons.map((l) => packOf(bookId, l.id)).filter((p): p is LessonPack => !!p)
+  if (packs.length < 2) return null
+  const summary = merged(packs.map((p) => ({ p, heading: p.title, text: p.summary.short || p.summary.full })))
+  const final = merged(packs.map((p) => ({ p, heading: p.title, text: p.summary.final || p.summary.short })))
+  const walk = (p: LessonPack, x: PackNode, depth: number): MindNode => ({ label: x.label, ...(citeOf(p, x.n) ? { cite: citeOf(p, x.n) } : {}), ...(depth < 1 && x.children?.length ? { children: x.children.map((c) => walk(p, c, depth + 1)) } : {}) })
+  const map: OutputData = { kind: 'mindmap', root: { label: unit.title, children: packs.map((p) => ({ label: p.title, children: (p.mindmap?.children ?? []).map((c) => walk(p, c, 0)) })) } }
+  return {
+    ready: packs.length,
+    total: unit.lessons.length,
+    summary: { kind: 'summary', ...summary } as OutputData,
+    final: { kind: 'summary', ...final } as OutputData,
+    map,
+  }
+}
