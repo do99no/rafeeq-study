@@ -7,6 +7,7 @@ import { actions, useData } from '../../store/store'
 import { openPage } from '../../store/viewer'
 import { EXAM_SOURCE, removedFromExam } from '../../data/syllabus'
 import type { Book, Focus, Notebook } from '../../types'
+import { useSubjectProgress } from '../../services/study/progressData'
 
 interface Props {
   notebook: Notebook
@@ -23,6 +24,9 @@ export function LessonTree({ notebook, books, off, onOff, onAdd, onPick }: Props
   usePacks()
   const { studied } = useData()
   const focus = notebook.focus
+  // حالة كل درس (مكتمل، بدأته، لم يبدأ) من لوحة التقدم نفسها
+  const { progress } = useSubjectProgress()
+  const stateOf = new Map(progress.flatMap((p) => p.lessons.map((l) => [`${l.bookId}:${l.sectionId}`, l.state] as const)))
   const done = (bookId: string, from: number, to: number) => Object.values(studied).find((s) => s.bookId === bookId && s.from === from && s.to === to)
 
   return (
@@ -59,15 +63,23 @@ export function LessonTree({ notebook, books, off, onOff, onAdd, onPick }: Props
             <ul className="lesson-list">
               {sections.map((s) => {
                 const st = done(b.id, s.page, s.endPage)
+                const ls = stateOf.get(`${b.id}:${s.id}`)
+                // تقدم الوحدة: دروسها حتى العنوان التالي من المستوى الأول
+                const unitLessons = s.level === 1 ? sections.slice(sections.indexOf(s) + 1, (() => { const n = sections.findIndex((x, k) => k > sections.indexOf(s) && x.level === 1); return n < 0 ? undefined : n })()).filter((x) => x.level === 2) : []
+                const unitDone = unitLessons.filter((x) => stateOf.get(`${b.id}:${x.id}`) === 'done').length
                 const active = focus?.bookId === b.id && focus.sectionId === s.id
                 return (
                   <li key={s.id}>
                     <button className="lesson-row" data-level={s.level} aria-current={active ? 'true' : undefined} onClick={() => onPick(focusOf(b.id, s))}>
+                      {ls && s.level === 2 ? <span className="ls-dot" data-state={ls} aria-hidden="true" /> : null}
                       <span className="grow">
                         {s.title}
+                        {unitLessons.length > 1 && unitDone > 0 && (
+                          <span className="unit-prog" role="img" aria-label={`أكملت ${unitDone} من ${unitLessons.length} دروس الوحدة`}><span style={{ width: `${(unitDone / unitLessons.length) * 100}%` }} /></span>
+                        )}
                         {removedFromExam(b.id, s.title) && <small className="off-exam" title={EXAM_SOURCE}> خارج امتحان ٢٠٢٥</small>}
                       </span>
-                      {st && (st.explained || st.taught || st.checks) ? <Check className="studied" aria-label="درسته" /> : packOf(b.id, s.id) ? <Sparkles className="ready" aria-label="محتوى جاهز" /> : null}
+                      {ls === 'done' ? <Check className="studied" aria-label="مكتمل" /> : st && (st.explained || st.taught || st.checks) ? <Check className="studied" aria-label="بدأته" style={{ opacity: 0.45 }} /> : packOf(b.id, s.id) ? <Sparkles className="ready" aria-label="محتوى جاهز" /> : null}
                     </button>
                   </li>
                 )

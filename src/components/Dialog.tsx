@@ -9,10 +9,14 @@ interface Props {
   variant?: 'modal' | 'wide' | 'reader' | 'start' | 'end'
   /** زر رجوع واضح بنص (مثل «رجوع إلى الدرس») بدل علامة الإغلاق وحدها */
   back?: string
+  /** سمات للعرض (حجم النص، وضع التركيز) */
+  data?: Record<string, string>
+  /** أدوات صغيرة بجانب العنوان */
+  tools?: ReactNode
 }
 
 /** يعتمد عنصر dialog الأصلي: حصر التركيز وزر Escape دون مكتبة. */
-export function Dialog({ title, onClose, children, variant = 'modal', back }: Props) {
+export function Dialog({ title, onClose, children, variant = 'modal', back, data, tools }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
   const pressedBackdrop = useRef(false)
   const id = useId()
@@ -25,6 +29,7 @@ export function Dialog({ title, onClose, children, variant = 'modal', back }: Pr
     <dialog
       ref={ref}
       className={`dialog dialog-${variant}`}
+      {...Object.fromEntries(Object.entries(data ?? {}).map(([k, v]) => [`data-${k}`, v]))}
       aria-labelledby={id}
       onCancel={(e) => {
         if (e.target !== ref.current) return // إلغاء منتقي الملفات يصل إلى هنا أيضاً
@@ -42,6 +47,7 @@ export function Dialog({ title, onClose, children, variant = 'modal', back }: Pr
             </button>
           )}
           <h2 id={id}>{title}</h2>
+          {tools}
           <button className="icon-btn" onClick={onClose} aria-label="إغلاق">
             <X />
           </button>

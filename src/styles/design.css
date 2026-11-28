@@ -1,0 +1,106 @@
+/*
+ * نظام تصميم رفيق: طبقة موحدة فوق الأنماط الموجودة.
+ * - الألوان: بنفسجي ملكي هادئ (--brand)، وخلفية كريمية (--bg)، وتركواز محدود للإبراز (--teal)، ولمسة ذهبية نادرة (--gold) للإنجاز فقط.
+ * - الدلالات: نجاح (--ok)، وتحذير (--warn)، وخطأ (--danger)، ومحايد (--ink-2). لا تُستعمل الدلالة باللون وحده: معها نص أو رمز.
+ * - المسافات: مضاعفات ٤ بكسل. الحواف: --r (14) للمساحات، و--r-sm (10) للعناصر.
+ * - الحركة: ١٢٠ إلى ٢٢٠ مللي ثانية، وتُلغى مع «تقليل الحركة» (base.css).
+ */
+:root {
+  --gold: #b0892f;
+  --gold-soft: #f6eedb;
+  --ok: #2f7d5b;
+  --ok-soft: #e1f1e8;
+  --warn: #a8651c;
+  --warn-soft: #f8ead7;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --t-fast: 120ms;
+  --t-med: 200ms;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) { --gold: #dcbc6e; --gold-soft: #3a3222; --ok: #7fcfa6; --ok-soft: #1e3a2d; --warn: #e5ad6b; --warn-soft: #3d2d1b; }
+}
+:root[data-theme='dark'] { --gold: #dcbc6e; --gold-soft: #3a3222; --ok: #7fcfa6; --ok-soft: #1e3a2d; --warn: #e5ad6b; --warn-soft: #3d2d1b; }
+
+/* حالات التفاعل الموحدة: ضغط واضح، وتركيز لوحة المفاتيح ظاهر */
+.btn, .chip, .icon-btn, .tool, .run-option, .subject-card, .recent-row, .hero-action { transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
+.btn:active:not(:disabled), .chip:active, .tool:active, .run-option:active, .hero-action:active { transform: scale(0.98); }
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2.5px solid var(--brand); outline-offset: 2px; border-radius: 8px; }
+.btn:disabled, .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ظهور منظم للصفحات: قصير وخفيف */
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.page > * { animation: rise var(--t-med) var(--ease) both; }
+.page > *:nth-child(2) { animation-delay: 30ms; }
+.page > *:nth-child(3) { animation-delay: 60ms; }
+.page > *:nth-child(n + 4) { animation-delay: 90ms; }
+
+/* بطاقة المادة: أيقونة، ثم الاسم والحالة والخطوة التالية، ثم حلقة التغطية الحقيقية */
+.subject-card { flex-direction: row; align-items: center; gap: 0.85rem; padding: 0.9rem 1rem; }
+.subject-card .spine { display: none; }
+.subject-card:hover { border-color: var(--hue, var(--brand)); transform: translateY(-1px); }
+.sc-icon { flex: none; width: 2.6rem; height: 2.6rem; border-radius: 12px; display: grid; place-items: center; color: var(--hue, var(--brand)); background: color-mix(in srgb, var(--hue, var(--brand)) 12%, var(--surface)); }
+.sc-body { flex: 1; min-width: 0; display: grid; gap: 0.15rem; }
+.sc-body strong { font-size: 1.02rem; }
+.sc-body small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-next { color: var(--brand-ink); font-size: 0.8rem; }
+
+/* حلقة التقدم */
+.ring2 { position: relative; display: inline-grid; place-items: center; flex: none; }
+.ring2 svg { position: absolute; inset: 0; }
+.ring2-track { stroke: var(--sunken); }
+.ring2-bar { stroke: var(--hue, var(--brand)); transition: stroke-dashoffset 600ms var(--ease); }
+.ring2-num { position: relative; font-size: 0.72rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+
+/* مؤشر الإتقان: نقاط ونص */
+.m-dots { display: inline-flex; align-items: center; gap: 0.4rem; }
+.m-dots > span { display: inline-flex; gap: 3px; }
+.m-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--sunken); }
+.m-dots i[data-on='true'] { background: var(--brand); }
+.m-dots[data-level='high'] i[data-on='true'] { background: var(--ok); }
+.m-dots[data-level='low'] i[data-on='true'] { background: var(--warn); }
+.m-dots small { color: var(--ink-2); }
+
+/* التذكيرات: صغيرة وهادئة، والتشجيع بلمسة ذهبية */
+.nudges li { background: var(--surface); border: 1px solid var(--line); border-inline-start: 3px solid var(--brand); }
+.nudges li[data-kind='praise'] { border-inline-start-color: var(--gold); background: var(--gold-soft); }
+.nudges li[data-kind='weak'], .nudges li[data-kind='behind'] { border-inline-start-color: var(--warn); }
+
+/* شجرة الدروس: حالة كل درس وتقدم كل وحدة */
+.lesson-row .ls-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; border: 2px solid var(--line); flex: none; }
+.lesson-row .ls-dot[data-state='done'] { background: var(--ok); border-color: var(--ok); }
+.lesson-row .ls-dot[data-state='started'] { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 35%, transparent); }
+.unit-prog { display: block; height: 3px; margin: 0.25rem 0 0.1rem; border-radius: 2px; background: var(--sunken); overflow: hidden; }
+.unit-prog > span { display: block; height: 100%; background: var(--brand); }
+
+/* خطة اليوم: خط زمني مبسط */
+.plan-today { position: relative; }
+.plan-today > li { position: relative; padding-inline-start: 1.25rem; }
+.plan-today > li::before { content: ''; position: absolute; inset-inline-start: 0.3rem; top: 1.35rem; bottom: -0.35rem; width: 2px; background: var(--line); }
+.plan-today > li:last-child::before { display: none; }
+.plan-today > li::after { content: ''; position: absolute; inset-inline-start: 0; top: 1.05rem; width: 0.75rem; height: 0.75rem; border-radius: 50%; border: 2px solid var(--brand); background: var(--surface); }
+.plan-today > li:first-child::after { background: var(--brand); box-shadow: 0 0 0 4px var(--brand-soft); }
+
+/* القراءة: حجم النص ووضع التركيز في مساحة الأداة */
+.read-tools { display: inline-flex; gap: 0.25rem; margin-inline-start: auto; }
+.dialog-wide[data-scale='1'] .rich { font-size: 1.12rem; }
+.dialog-wide[data-scale='2'] .rich { font-size: 1.25rem; line-height: 2; }
+.dialog-wide[data-focus='true'] { width: 100vw; max-width: none; height: 100dvh; max-height: none; border-radius: 0; margin: 0; }
+.dialog-wide[data-focus='true'] .ready-tag, .dialog-wide[data-focus='true'] .dialog-body > .btn-row { display: none; }
+
+/* حالات التحميل: نبض خفيف بدل الدوران حين يناسب */
+@keyframes pulse { 50% { opacity: 0.55; } }
+.page-loading, .thinking { animation: pulse 1.6s ease-in-out infinite; }
+
+/* المهمة المكتملة: تأكيد بصري قصير */
+@keyframes done-pop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
+.place-row[data-state='submitted'] .place-dot svg, .sp-lessons li[data-state='done'] .sp-dot { animation: done-pop 260ms var(--ease) both; }
+.subject-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); }
+.sc-body small { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* التقييمات: قائمة هادئة بفواصل بدل بطاقات داخل بطاقة، وأزرار محددة لا ممتلئة */
+.panel .assess-grid { gap: 0; grid-template-columns: 1fr; }
+.panel .assess { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; box-shadow: none; padding: 0.9rem 0; }
+.panel .assess:last-child { border-bottom: 0; }
+.panel .assess .btn-primary { background: transparent; color: var(--brand-ink); border-color: var(--brand); }
+.panel .assess .btn-primary:hover:not(:disabled) { background: var(--brand-soft); }
+@media (min-width: 900px) { .panel .assess-grid { grid-template-columns: 1fr 1fr; column-gap: 2rem; } .panel .assess:nth-last-child(2):nth-child(odd) { border-bottom: 0; } }

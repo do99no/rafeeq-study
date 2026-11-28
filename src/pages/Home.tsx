@@ -4,7 +4,7 @@ import { useSubjectProgress } from '../services/study/progressData'
 import { nudges } from '../lib/progress'
 import { usePlan } from '../services/server/session'
 import { isDue, normalCards } from '../components/outputs/CardsView'
-import { ago, booksCount, lessonsCount, num } from '../lib/format'
+import { ago, lessonsCount, num } from '../lib/format'
 import { setupCurriculum, useCurriculum } from '../services/books/curriculum'
 import { packOf, usePacks } from '../services/study/lessonPack'
 import { startStudy } from '../lib/study'
@@ -12,6 +12,7 @@ import { Link } from '../router'
 import { isSearchable, useDocs } from '../services/books/process'
 import { useData, useStore } from '../store/store'
 import { PlanCard } from '../components/PlanCard'
+import { Ring, SubjectIcon } from '../components/SubjectVisual'
 import { StudyPlan } from '../components/StudyPlan'
 
 export function Home() {
@@ -101,19 +102,17 @@ export function Home() {
               const sp = progress.find((x) => x.subject === n.subject)
               return (
                 <Link key={n.id} to={`/notebooks/${n.id}`} className="subject-card" data-hue={n.hue}>
-                  <span className="spine" aria-hidden="true" />
-                  <strong>{n.title}</strong>
-                  <small className="muted">
-                    {booksCount(nbBooks.length)}، {lessonsCount(lessons.length)}
-                  </small>
-                  {sp && (sp.done || sp.started) ? (
-                    <>
-                      <span className="sp-bar sp-bar-sm" aria-hidden="true"><span style={{ width: `${sp.coverage}%` }} /></span>
-                      <small className="muted">{num(sp.coverage)}٪ · {sp.mastery === null ? sp.masteryLabel : `الإتقان ${num(sp.mastery)}٪`}</small>
-                    </>
-                  ) : (
-                    <small className="muted">{readyN ? 'لم تبدأها بعد' : 'المحتوى الجاهز قيد الإعداد'}</small>
-                  )}
+                  <span className="sc-icon" aria-hidden="true"><SubjectIcon subject={n.subject} /></span>
+                  <span className="sc-body">
+                    <strong>{n.title}</strong>
+                    <small className="muted">
+                      {sp && (sp.done || sp.started)
+                        ? `${sp.mastery === null ? sp.masteryLabel : `الإتقان: ${sp.masteryLabel}`}${sp.lastAt ? ` · ${ago(sp.lastAt)}` : ''}`
+                        : readyN ? `${lessonsCount(lessons.length)} · لم تبدأها بعد` : 'المحتوى الجاهز قيد الإعداد'}
+                    </small>
+                    {sp?.next && readyN > 0 && <small className="sc-next">التالي: {sp.next.title}</small>}
+                  </span>
+                  <Ring value={sp && (sp.done || sp.started) ? sp.coverage : null} label={sp && (sp.done || sp.started) ? `تغطية ${n.title} ${sp.coverage}٪` : `لم تبدأ ${n.title}`} />
                 </Link>
               )
             })}

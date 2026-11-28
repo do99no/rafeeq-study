@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { canSpeak, speak, stopSpeaking } from '../../lib/speech'
 import { cachedSpoken, spokenScript } from '../../services/study/spoken'
 import { logEvent, setTask } from '../../services/server/tracker'
-import { Pencil, Printer, Volume2, VolumeX } from 'lucide-react'
+import { Maximize2, Minimize2, Pencil, Printer, Type, Volume2, VolumeX } from 'lucide-react'
 import { printOutput } from '../../lib/print'
 import { actions, getState } from '../../store/store'
 import { toast } from '../../store/toast'
@@ -48,6 +48,10 @@ export default function OutputDialog({ output, onClose, prepared }: { output: St
   const { data } = output
   const [editing, setEditing] = useState(false)
   const [reading, setReading] = useState(false)
+  // حجم نص القراءة (يُحفظ على الجهاز) ووضع التركيز
+  const [scale, setScale] = useState(() => { try { return Number(localStorage.getItem('rafeeq-read-scale') ?? 0) || 0 } catch { return 0 } })
+  const [focusMode, setFocusMode] = useState(false)
+  const readable = data.kind === 'summary' || data.kind === 'compare' || data.kind === 'note'
   useEffect(() => () => stopSpeaking(), [])
   // وقت المراجعة يُنسب إلى نوعها
   useEffect(() => {
@@ -56,7 +60,19 @@ export default function OutputDialog({ output, onClose, prepared }: { output: St
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [output.id])
   return (
-    <Dialog variant="wide" back="رجوع إلى الدرس" title={output.title} onClose={onClose}>
+    <Dialog
+      variant="wide"
+      back="رجوع إلى الدرس"
+      title={output.title}
+      onClose={onClose}
+      data={{ scale: String(scale), focus: String(focusMode) }}
+      tools={readable ? (
+        <span className="read-tools">
+          <button className="icon-btn" onClick={() => { const n = (scale + 1) % 3; setScale(n); try { localStorage.setItem('rafeeq-read-scale', String(n)) } catch { /* بلا تخزين */ } }} aria-label="حجم النص" title="حجم النص"><Type /></button>
+          <button className="icon-btn" aria-pressed={focusMode} onClick={() => setFocusMode(!focusMode)} aria-label="وضع التركيز" title="وضع التركيز">{focusMode ? <Minimize2 /> : <Maximize2 />}</button>
+        </span>
+      ) : undefined}
+    >
       {prepared && <p className="ready-tag">{prepared}</p>}
       <div className="btn-row">
         {canSpeak && (data.kind === 'summary' || data.kind === 'compare' || data.kind === 'note') && (
