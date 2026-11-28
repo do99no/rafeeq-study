@@ -295,12 +295,12 @@ export function ChatPanel({ notebook, books, activeIds, onAddSource, onOpenOutpu
     setSpeaking(m.id)
     const done = () => setSpeaking((x) => (x === m.id ? null : x))
     // الشرح الصوتي بأسلوب المدرس (نص منطوق مستقل عن المكتوب)، والفصحى كما كُتبت إن اختارها الطالب أو تعذّرت الخدمة
-    if ((s.voiceStyle ?? 'teacher') === 'fusha') return speakText(m.text, { voice: s.voice, rate: s.rate, onEnd: done })
+    if ((s.voiceStyle ?? 'teacher') === 'fusha') return speakText(m.text, { voice: s.voice, rate: s.rate, onEnd: done, title: 'شرح رفيق' })
     const c = new AbortController()
     if (!cachedSpoken(m.id)) toast('يجهّز رفيق الشرح الصوتي…')
     void spokenScript(m.id, m.text, c.signal).then((script) => {
       if (script === null && !cachedSpoken(m.id)) toast('تعذّر تجهيز الشرح الصوتي الآن، فيُقرأ النص كما هو مكتوب.')
-      speakText(script ?? m.text, { voice: s.voice, rate: s.rate, egyptian: !!script, onEnd: done })
+      speakText(script ?? m.text, { voice: s.voice, rate: s.rate, egyptian: !!script, onEnd: done, title: 'شرح رفيق' })
     })
   }
 

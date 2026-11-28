@@ -14,6 +14,7 @@ import { logEvent, setStudying, setTask } from './services/server/tracker'
 import { Login, Setup } from './pages/Login'
 import { ImportLocal } from './components/ImportLocal'
 import { UpdateBanner } from './components/UpdateBanner'
+import { ReadAloudBar } from './components/ReadAloudBar'
 import { needsPlacement, refreshPlacement } from './services/study/placement'
 import { go } from './router'
 
@@ -184,6 +185,7 @@ export function App() {
   return (
     <>
       <StudentApp />
+      <ReadAloudBar />
       <UpdateBanner />
       {needImport && <ImportLocal onClose={() => setNeedImport(false)} />}
     </>

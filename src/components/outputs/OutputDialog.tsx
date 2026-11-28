@@ -60,7 +60,7 @@ export default function OutputDialog({ output, onClose, prepared }: { output: St
       {prepared && <p className="ready-tag">{prepared}</p>}
       <div className="btn-row">
         {canSpeak && (data.kind === 'summary' || data.kind === 'compare' || data.kind === 'note') && (
-          <button className="btn btn-sm" aria-pressed={reading} onClick={() => { if (reading) { stopSpeaking(); setReading(false) } else { const s = getState().data.settings; setReading(true); const end = () => setReading(false); if ((s.voiceStyle ?? 'teacher') === 'fusha') speak(data.text, { voice: s.voice, rate: s.rate, onEnd: end }); else { if (!cachedSpoken(output.id)) toast('يجهّز رفيق الشرح الصوتي…'); void spokenScript(output.id, data.text, new AbortController().signal).then((sc) => speak(sc ?? data.text, { voice: s.voice, rate: s.rate, egyptian: !!sc, onEnd: end })) } } }}>
+          <button className="btn btn-sm" aria-pressed={reading} onClick={() => { if (reading) { stopSpeaking(); setReading(false) } else { const s = getState().data.settings; setReading(true); const end = () => setReading(false); if ((s.voiceStyle ?? 'teacher') === 'fusha') speak(data.text, { voice: s.voice, rate: s.rate, onEnd: end, title: output.title }); else { if (!cachedSpoken(output.id)) toast('يجهّز رفيق الشرح الصوتي…'); void spokenScript(output.id, data.text, new AbortController().signal).then((sc) => speak(sc ?? data.text, { voice: s.voice, rate: s.rate, egyptian: !!sc, onEnd: end, title: output.title })) } } }}>
             {reading ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />} {reading ? 'إيقاف القراءة' : 'استمع'}
           </button>
         )}

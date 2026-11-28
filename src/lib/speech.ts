@@ -178,36 +178,128 @@ export interface SpeakOptions {
   voice?: string
   /** المنطوق بلمسة مصرية: يُفضَّل صوت ar-EG */
   egyptian?: boolean
+  /** عنوان للعرض في شريط القراءة */
+  title?: string
+  /** ملف صوتي مُعدّ مسبقاً (صوت المدرس المعتمد) إن وُجد: يُشغَّل بدل صوت المتصفح */
+  audioUrl?: string
   onEnd?: () => void
 }
+
+// ===== جلسة القراءة: تشغيل وإيقاف مؤقت وتقديم وإرجاع وإعادة وسرعة، ويراها شريط القراءة =====
+export interface ReadState {
+  active: boolean
+  paused: boolean
+  index: number
+  total: number
+  rate: number
+  title?: string
+  mode: 'browser' | 'file'
+}
+let state: ReadState = { active: false, paused: false, index: 0, total: 0, rate: 0.92, mode: 'browser' }
+const subs = new Set<() => void>()
+const set = (s: Partial<ReadState>) => {
+  state = { ...state, ...s }
+  subs.forEach((l) => l())
+}
+export const readState = () => state
+export const onReadState = (l: () => void) => (subs.add(l), () => void subs.delete(l))
+
 let token = 0
-/** يقرأ النص جملةً جملة؛ استدعاء جديد أو stopSpeaking يوقف القراءة الجارية */
-export function speak(md: string, o: SpeakOptions = {}) {
-  if (!synth) return
+let session: { chunks: { text: string; lang: 'ar' | 'en' }[]; o: SpeakOptions; ar: SpeechSynthesisVoice | null; en: SpeechSynthesisVoice | null } | null = null
+let audio: HTMLAudioElement | null = null
+let audioEnd: (() => void) | undefined
+
+function playFrom(i: number) {
+  if (!synth || !session) return
   synth.cancel()
   const my = ++token
-  const chunks = speechChunks(speechText(md))
-  const ar = bestVoice('ar', o.voice, o.egyptian ? /EG/i : undefined)
-  const en = bestVoice('en')
-  const rate = o.rate ?? 0.92
-  let i = 0
-  const nextChunk = () => {
+  const { chunks, o, ar, en } = session
+  let k = i
+  const next = () => {
     if (my !== token) return
-    if (i >= chunks.length) return o.onEnd?.()
-    const c = chunks[i++]
+    if (k >= chunks.length) {
+      set({ active: false, paused: false })
+      return o.onEnd?.()
+    }
+    set({ index: k })
+    const c = chunks[k++]
     const u = new SpeechSynthesisUtterance(c.text)
     u.lang = c.lang === 'en' ? 'en-US' : (ar?.lang ?? 'ar-SA')
     u.voice = (c.lang === 'en' ? en : ar) ?? null
     // الصوت المحلي أسرع من الطبيعي عادة: يُبطأ قليلاً ليناسب التعلم
-    u.rate = c.lang === 'en' ? Math.min(rate, 0.95) : rate
+    u.rate = c.lang === 'en' ? Math.min(state.rate, 0.95) : state.rate
     u.pitch = 1
-    u.onend = () => setTimeout(nextChunk, /[.؟?!]$/.test(c.text) ? 260 : 120)
-    u.onerror = () => (my === token ? o.onEnd?.() : undefined)
+    u.onend = () => setTimeout(next, /[.؟?!]$/.test(c.text) ? 260 : 120)
+    u.onerror = () => (my === token ? (set({ active: false }), o.onEnd?.()) : undefined)
     synth.speak(u)
   }
-  nextChunk()
+  next()
+}
+
+/** يقرأ النص جملةً جملة؛ استدعاء جديد أو stopSpeaking يوقف القراءة الجارية */
+export function speak(md: string, o: SpeakOptions = {}) {
+  stopSpeaking()
+  const rate = o.rate ?? 0.92
+  if (o.audioUrl) {
+    audio = new Audio(o.audioUrl)
+    audioEnd = o.onEnd
+    audio.playbackRate = rate / 0.92
+    audio.onended = () => (set({ active: false }), o.onEnd?.())
+    audio.onerror = () => {
+      // الملف غير متاح: صوت المتصفح بدلاً منه، فلا تتوقف القراءة
+      audio = null
+      speak(md, { ...o, audioUrl: undefined })
+    }
+    set({ active: true, paused: false, index: 0, total: 1, rate, title: o.title, mode: 'file' })
+    void audio.play().catch(() => audio?.onerror?.(new Event('error')))
+    return
+  }
+  if (!synth) return
+  session = { chunks: speechChunks(speechText(md)), o, ar: bestVoice('ar', o.voice, o.egyptian ? /EG/i : undefined), en: bestVoice('en') }
+  set({ active: true, paused: false, index: 0, total: session.chunks.length, rate, title: o.title, mode: 'browser' })
+  playFrom(0)
 }
 export function stopSpeaking() {
   token++
   synth?.cancel()
+  // من بدأ القراءة يُبلَّغ بانتهائها، كي يعود زر الاستماع إلى حاله
+  const end = state.active ? (audio ? audioEnd : session?.o.onEnd) : undefined
+  if (audio) {
+    audio.onended = audio.onerror = null
+    audio.pause()
+    audio = null
+  }
+  session = null
+  audioEnd = undefined
+  if (state.active) set({ active: false, paused: false })
+  end?.()
+}
+export function pauseSpeaking() {
+  if (audio) audio.pause()
+  else synth?.pause()
+  set({ paused: true })
+}
+export function resumeSpeaking() {
+  if (audio) void audio.play()
+  else synth?.resume()
+  set({ paused: false })
+}
+/** جملة سابقة أو تالية (أو ١٠ ثوانٍ في الملف الصوتي) */
+export function skipSpeaking(delta: number) {
+  if (audio) return void (audio.currentTime = Math.max(0, audio.currentTime + delta * 10))
+  if (!session) return
+  set({ paused: false })
+  playFrom(Math.max(0, Math.min(session.chunks.length - 1, state.index + delta)))
+}
+export function replaySpeaking() {
+  if (audio) return void ((audio.currentTime = 0), audio.play())
+  if (session) {
+    set({ paused: false, active: true })
+    playFrom(0)
+  }
+}
+export function setSpeakingRate(rate: number) {
+  set({ rate })
+  if (audio) audio.playbackRate = rate / 0.92
+  else if (session && state.active && !state.paused) playFrom(state.index)
 }
